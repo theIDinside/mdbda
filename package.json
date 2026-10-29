@@ -2,7 +2,7 @@
   "name": "mdbda",
   "displayName": "mdb",
   "description": "Debug C, C++ and Rust programs with mdb",
-  "version": "0.0.1",
+  "version": "0.1.0",
   "engines": {
     "vscode": "^1.144.0"
   },

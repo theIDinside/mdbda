@@ -1,9 +1,8 @@
 # Change Log
 
-All notable changes to the "mdbda" extension will be documented in this file.
+## [0.1.0] - 2026-10-30
 
-Check [Keep a Changelog](http://keepachangelog.com/) for recommendations on how to structure this file.
+### Added
 
-## [Unreleased]
-
-- Initial release
+- Initial release of the mdb debug adapter extension for Visual Studio Code.
+- ptrace debugging, rr replay, fork child sessions, breakpoint and memory request workarounds, and mdb-specific commands.
