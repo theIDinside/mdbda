@@ -1,7 +1,7 @@
 {
   "name": "mdbda",
-  "displayName": "mdbda",
-  "description": "Debug adapter for mdb",
+  "displayName": "mdb",
+  "description": "Debug C, C++ and Rust programs with mdb",
   "version": "0.0.1",
   "engines": {
     "vscode": "^1.144.0"
@@ -9,9 +9,155 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onDebugResolve:mdb",
+    "onDebugDynamicConfigurations:mdb"
+  ],
   "main": "./dist/extension.js",
-  "contributes": {},
+  "contributes": {
+    "debuggers": [
+      {
+        "type": "mdb",
+        "label": "mdb",
+        "languages": ["c", "cpp", "rust"],
+        "configurationAttributes": {
+          "launch": {
+            "type": "object",
+            "properties": {
+              "sessionType": {
+                "type": "string",
+                "enum": ["ptrace", "rr"],
+                "default": "ptrace",
+                "description": "Debug a live process with ptrace or replay an rr trace."
+              },
+              "program": {
+                "type": "string",
+                "description": "Executable to debug. Required for ptrace sessions; it must exist and be executable."
+              },
+              "args": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Arguments for the program. mdb currently wraps each argument in literal quote characters, which may change how the program receives it."
+              },
+              "stopOnEntry": {
+                "type": "boolean",
+                "default": false,
+                "description": "Stop as soon as the program starts."
+              },
+              "breakpointBehavior": {
+                "type": "string",
+                "enum": ["Stop all threads", "Stop single thread"],
+                "default": "Stop all threads",
+                "description": "Choose whether a breakpoint stops every thread or only the thread that hit it."
+              },
+              "views": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Paths to .mdbv view files to load for this session."
+              },
+              "traceDir": {
+                "type": "string",
+                "description": "rr trace directory to replay."
+              },
+              "cwd": {
+                "type": "string",
+                "description": "Working directory for the program. mdb currently ignores cwd."
+              },
+              "env": {
+                "type": "object",
+                "description": "Environment variables for the program. mdb currently ignores env."
+              },
+              "mdbPath": {
+                "type": "string",
+                "description": "Optional path or executable name for mdb; overrides the mdb.path setting."
+              },
+              "mdbArgs": {
+                "type": "array",
+                "items": {"type": "string"},
+                "description": "Additional arguments passed to the mdb executable."
+              },
+              "logDirectory": {
+                "type": "string",
+                "description": "Directory for mdb log files. Overrides the mdb.logDirectory setting."
+              }
+            }
+          },
+          "attach": {
+            "type": "object",
+            "properties": {
+              "processId": {
+                "type": "number",
+                "description": "Internal only: process id of a forked child already traced by mdb."
+              }
+            }
+          }
+        },
+        "initialConfigurations": [
+          {
+            "name": "mdb: Launch",
+            "type": "mdb",
+            "request": "launch",
+            "program": "${workspaceFolder}/program"
+          },
+          {
+            "name": "mdb: Replay rr trace",
+            "type": "mdb",
+            "request": "launch",
+            "sessionType": "rr",
+            "traceDir": "${workspaceFolder}/trace"
+          }
+        ],
+        "configurationSnippets": [
+          {
+            "label": "mdb: Launch",
+            "description": "Launch a program with mdb",
+            "body": {"type": "mdb", "request": "launch", "program": "${workspaceFolder}/program"}
+          },
+          {
+            "label": "mdb: Replay rr trace",
+            "description": "Replay an rr trace with mdb",
+            "body": {"type": "mdb", "request": "launch", "sessionType": "rr", "traceDir": "${workspaceFolder}/trace"}
+          }
+        ]
+      }
+    ],
+    "breakpoints": [
+      {"language": "c"},
+      {"language": "cpp"},
+      {"language": "rust"}
+    ],
+    "configuration": {
+      "title": "mdb",
+      "properties": {
+        "mdb.path": {
+          "type": "string",
+          "default": "mdb",
+          "description": "Path to the mdb executable, resolved from PATH or relative to the workspace."
+        },
+        "mdb.extraArgs": {
+          "type": "array",
+          "items": {"type": "string"},
+          "default": [],
+          "description": "Extra arguments passed to mdb for every session."
+        },
+        "mdb.threads": {
+          "type": ["number", "null"],
+          "default": null,
+          "description": "Optional mdb worker thread count."
+        },
+        "mdb.logDirectory": {
+          "type": "string",
+          "default": "",
+          "description": "Directory for mdb logs. Leave empty to use a timestamped directory under the extension log directory."
+        },
+        "mdb.trace": {
+          "type": "boolean",
+          "default": false,
+          "description": "Log DAP messages sent and received by the mdb proxy."
+        }
+      }
+    }
+  },
   "scripts": {
     "vscode:prepublish": "yarn run package",
     "compile": "webpack",

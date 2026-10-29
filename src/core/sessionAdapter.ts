@@ -75,7 +75,7 @@ export class MdbSessionAdapter implements ConnectionAdapter {
 		this.selectedPid = this.pid;
 	}
 
-	handleMessage(message: ProtocolMessage): void {
+	handleMessage(message: any): void {
 		if (this.disposed || message.type !== 'request') {
 			return;
 		}
@@ -90,7 +90,7 @@ export class MdbSessionAdapter implements ConnectionAdapter {
 		});
 	}
 
-	onDidSendMessage(listener: (message: ProtocolMessage) => void): { dispose(): void } {
+	onDidSendMessage(listener: (message: any) => void): { dispose(): void } {
 		this.listeners.add(listener);
 		return { dispose: () => this.listeners.delete(listener) };
 	}
