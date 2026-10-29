@@ -1,6 +1,7 @@
 export interface ProtocolMessage {
 	seq: number;
 	type: 'request' | 'response' | 'event';
+	[key: string]: unknown;
 }
 
 export interface Request extends ProtocolMessage {
