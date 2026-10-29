@@ -2,6 +2,7 @@ import * as path from 'path';
 import * as vscode from 'vscode';
 import { MdbAdapterFactory } from './vscode/adapterFactory';
 import { MdbConfigurationProvider } from './vscode/configProvider';
+import { registerCommands } from './vscode/commands';
 import { VsCodeHost } from './vscode/host';
 import { SessionRegistry } from './vscode/sessionRegistry';
 
@@ -14,6 +15,7 @@ export function activate(context: vscode.ExtensionContext): void {
 		path.join(context.logUri.fsPath, `mdb-${Date.now()}`),
 	);
 	const adapterFactory = new MdbAdapterFactory(context, host, registry);
+	registerCommands(context, registry);
 
 	context.subscriptions.push(
 		output,

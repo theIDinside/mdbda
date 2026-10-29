@@ -126,6 +126,26 @@
       {"language": "cpp"},
       {"language": "rust"}
     ],
+    "commands": [
+      {"command": "mdb.continueAll", "title": "mdb: Continue All Threads", "icon": "$(run-all)"},
+      {"command": "mdb.pauseAll", "title": "mdb: Pause All Threads", "icon": "$(debug-pause)"},
+      {"command": "mdb.loadViews", "title": "mdb: Load Views File…"},
+      {"command": "mdb.selectReplayProcess", "title": "mdb: Select Replay Process"},
+      {"command": "mdb.reverseContinue", "title": "mdb: Reverse Continue"}
+    ],
+    "menus": {
+      "commandPalette": [
+        {"command": "mdb.continueAll", "when": "debugType == mdb"},
+        {"command": "mdb.pauseAll", "when": "debugType == mdb"},
+        {"command": "mdb.loadViews", "when": "debugType == mdb"},
+        {"command": "mdb.selectReplayProcess", "when": "debugType == mdb && mdb.isReplay"},
+        {"command": "mdb.reverseContinue", "when": "debugType == mdb && mdb.isReplay"}
+      ],
+      "debug/toolBar": [
+        {"command": "mdb.continueAll", "when": "debugType == mdb"},
+        {"command": "mdb.pauseAll", "when": "debugType == mdb"}
+      ]
+    },
     "configuration": {
       "title": "mdb",
       "properties": {
