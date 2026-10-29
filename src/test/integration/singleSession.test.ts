@@ -7,65 +7,10 @@ import { Host } from '../../core/host';
 import { nullLogger } from '../../core/logger';
 import { MdbProcess } from '../../core/mdbProcess';
 import { MdbSessionAdapter } from '../../core/sessionAdapter';
-import { ProtocolMessage } from '../../core/protocol';
+import { MiniDapClient, binaryDirectory, resolveMdbPath } from './miniDapClient';
 
-const defaultMdbPath = '/home/sfarre/dev/dbm/obj/debug/bin/mdb';
-const defaultSubject = '/home/sfarre/dev/dbm/obj/debug/bin/stackframes';
+const defaultSubject = path.join(binaryDirectory, 'stackframes');
 const subjectSource = '/home/sfarre/dev/dbm/test/stackframes.cpp';
-
-class MiniDapClient {
-	private sequence = 0;
-	private readonly waiting: ProtocolMessage[] = [];
-	readonly delivered: ProtocolMessage[] = [];
-	private readonly notify: Array<() => void> = [];
-
-	constructor(private readonly adapter: MdbSessionAdapter) {
-		adapter.onDidSendMessage((message) => {
-			this.waiting.push(message);
-			this.delivered.push(message);
-			for (const wake of this.notify.splice(0)) {
-				wake();
-			}
-		});
-	}
-
-	async request(command: string, args: Record<string, unknown> = {}): Promise<Record<string, any>> {
-		const seq = ++this.sequence;
-		this.adapter.handleMessage({ seq, type: 'request', command, arguments: args });
-		return this.waitFor((message) => message.type === 'response' && message.request_seq === seq) as Promise<Record<string, any>>;
-	}
-
-	waitFor(predicate: (message: ProtocolMessage) => boolean, timeoutMs = 10000): Promise<ProtocolMessage> {
-		const find = (): ProtocolMessage | undefined => {
-			const index = this.waiting.findIndex(predicate);
-			return index < 0 ? undefined : this.waiting.splice(index, 1)[0];
-		};
-		const current = find();
-		if (current) {
-			return Promise.resolve(current);
-		}
-		return new Promise((resolve, reject) => {
-			let timer: NodeJS.Timeout;
-			const check = (): void => {
-				const next = find();
-				if (next) {
-					clearTimeout(timer);
-					resolve(next);
-				} else {
-					this.notify.push(check);
-				}
-			};
-			timer = setTimeout(() => {
-				const index = this.notify.indexOf(check);
-				if (index >= 0) {
-					this.notify.splice(index, 1);
-				}
-				reject(new Error('Timed out waiting for DAP message'));
-			}, timeoutMs);
-			this.notify.push(check);
-		});
-	}
-}
 
 function createHost(): Host {
 	return {
@@ -78,7 +23,7 @@ function createHost(): Host {
 
 suite('single mdb session integration', () => {
 	test('runs the initialize, breakpoint, launch, inspect, step, and exit lifecycle', async function () {
-		const mdbPath = process.env.MDB_PATH ?? defaultMdbPath;
+		const mdbPath = resolveMdbPath();
 		if (!fs.existsSync(mdbPath) || !fs.existsSync(defaultSubject) || !fs.existsSync(subjectSource)) {
 			this.skip();
 		}
@@ -94,7 +39,7 @@ suite('single mdb session integration', () => {
 			isChild: false,
 			config: { name: 'stackframes', sessionType: 'ptrace', program: defaultSubject, args: [] },
 		});
-		const client = new MiniDapClient(adapter);
+		const client = new MiniDapClient(adapter, 10000);
 		try {
 			const initialize = await client.request('initialize', { adapterID: 'mdbda' });
 			assert.strictEqual(initialize.success, true);
