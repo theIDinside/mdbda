@@ -11,20 +11,15 @@
   ],
   "activationEvents": [],
   "main": "./dist/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "mdbda.helloWorld",
-        "title": "Hello World"
-      }
-    ]
-  },
+  "contributes": {},
   "scripts": {
     "vscode:prepublish": "yarn run package",
     "compile": "webpack",
     "watch": "webpack --watch",
     "package": "webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
+    "test:unit": "mocha --ui tdd 'out/test/unit/**/*.test.js'",
+    "test:integration": "mocha --ui tdd --timeout 20000 'out/test/integration/**/*.test.js'",
     "watch-tests": "tsc -p . -w --outDir out",
     "pretest": "yarn run compile-tests && yarn run compile && yarn run lint",
     "lint": "eslint src",
