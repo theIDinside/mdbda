@@ -125,7 +125,7 @@ export class MdbSessionAdapter implements ConnectionAdapter {
 			this.pid = Number(boundPid);
 			this.connection.bindPid(this, this.pid);
 			if (this.sessionType === 'rr') {
-				this.processes.splice(0, this.processes.length, ...(Array.isArray(response.body.processes)
+				this.processes.splice(0, this.processes.length, ...(Array.isArray(response.body?.processes)
 					? response.body.processes as number[]
 					: [this.pid]));
 				this.selectedPid = this.pid;

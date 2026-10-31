@@ -8,11 +8,11 @@ export interface ConditionWarning {
 }
 
 export function rewriteNext<T extends AnyRecord>(args: T): T {
-	const rewritten = { ...args };
+	const rewritten: AnyRecord = { ...args };
 	if (rewritten.granularity === 'statement') {
 		rewritten.granularity = 'line';
 	}
-	return rewritten;
+	return rewritten as T;
 }
 
 export function rewriteDisassemble<T extends AnyRecord>(args: T): T {
@@ -24,13 +24,13 @@ export function rewriteDisassemble<T extends AnyRecord>(args: T): T {
 }
 
 export function foldMemoryOffset<T extends AnyRecord>(args: T): T {
-	const rewritten = { ...args };
+	const rewritten: AnyRecord = { ...args };
 	if (rewritten.offset !== undefined && rewritten.memoryReference !== undefined) {
 		const reference = String(rewritten.memoryReference).replace(/^0[xX]/, '');
 		rewritten.memoryReference = `0x${(BigInt(`0x${reference}`) + BigInt(rewritten.offset)).toString(16)}`;
 	}
 	delete rewritten.offset;
-	return rewritten;
+	return rewritten as T;
 }
 
 export function sliceStackTrace<T extends AnyRecord>(args: AnyRecord, body: T): T {
@@ -89,7 +89,7 @@ export function rewriteSetBreakpoints(args: AnyRecord): SetBreakpointsResult {
 		forwardBreakpoints.push(breakpoint);
 	});
 
-	const forward = { ...args, breakpoints: forwardBreakpoints };
+	const forward: AnyRecord = { ...args, breakpoints: forwardBreakpoints };
 	if (Array.isArray(args.lines)) {
 		forward.lines = requested
 			.map((breakpoint, index) => ({ line: breakpoint.line ?? args.lines[index], index }))
@@ -197,8 +197,10 @@ export function wrapCustomRequest(command: string, args?: AnyRecord): AnyRecord 
 	return { command: 'customRequest', arguments: { command, arguments: args ?? {} } };
 }
 
-export function stripMdbEventFields<T extends Event>(event: T): { event: Omit<T, 'processId'>; processes?: number[] } {
-	const { processId: _processId, ...stripped } = event;
+export function stripMdbEventFields(event: Event): { event: Event; processes?: number[] } {
+	// Copy and delete rather than destructure: Omit<> on a type with an index signature drops the named fields.
+	const stripped: Event = { ...event };
+	delete stripped.processId;
 	let processes: number[] | undefined;
 	if (stripped.event === 'stopped' && stripped.body) {
 		const body = { ...stripped.body };
@@ -206,7 +208,7 @@ export function stripMdbEventFields<T extends Event>(event: T): { event: Omit<T,
 			processes = body.processes as number[];
 		}
 		delete body.processes;
-		(stripped as Event).body = body;
+		stripped.body = body;
 	}
 	return { event: stripped, processes };
 }
