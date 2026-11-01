@@ -45,6 +45,10 @@ export class MdbSocketProcess extends EventEmitter implements MdbProcessLike {
     fs.mkdirSync(opts.logDirectory, { recursive: true });
   }
 
+  get pid(): number | undefined {
+    return this.child?.pid;
+  }
+
   start(): void {
     if (this.child) {
       throw new Error('mdb process has already been started');
