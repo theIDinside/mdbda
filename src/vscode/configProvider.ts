@@ -131,10 +131,16 @@ export class MdbConfigurationProvider implements vscode.DebugConfigurationProvid
 			? configuration.mdbArgs
 			: settings.get<string[]>('extraArgs', []);
 		const configuredThreads = settings.get<number | null>('threads', null);
+		const transport = configuration.transport ?? settings.get<string>('transport', 'stdio');
+		if (transport !== 'stdio' && transport !== 'socket') {
+			void vscode.window.showErrorMessage(`Unsupported mdb transport: ${String(transport)}`);
+			return undefined;
+		}
 		configuration.__mdb = {
 			path: resolvedMdbPath,
 			args: configuredArgs,
 			logDirectory,
+			transport,
 			...(typeof configuredThreads === 'number' && configuredThreads > 0 ? { threads: configuredThreads } : {}),
 		};
 		return configuration;

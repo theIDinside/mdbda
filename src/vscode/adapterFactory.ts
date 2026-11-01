@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { MdbConnection } from '../core/connection';
 import { MdbProcess } from '../core/mdbProcess';
+import { MdbSocketProcess } from '../core/mdbSocketProcess';
 import { MdbSessionAdapter } from '../core/sessionAdapter';
 import { Host } from '../core/host';
 import { SessionRegistry } from './sessionRegistry';
@@ -56,13 +57,17 @@ export class MdbAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
 			if (!processConfig || typeof processConfig.path !== 'string' || typeof processConfig.logDirectory !== 'string') {
 				throw new Error('The resolved mdb configuration is missing. Reopen the launch configuration and try again.');
 			}
+			const mdbProcessOptions = {
+				path: processConfig.path,
+				args: Array.isArray(processConfig.args) ? processConfig.args : [],
+				logDirectory: processConfig.logDirectory,
+				threads: typeof processConfig.threads === 'number' ? processConfig.threads : undefined,
+			};
+			const mdbProcess = processConfig.transport === 'socket'
+				? new MdbSocketProcess(mdbProcessOptions)
+				: new MdbProcess(mdbProcessOptions);
 			connection = new MdbConnection(
-				new MdbProcess({
-					path: processConfig.path,
-					args: Array.isArray(processConfig.args) ? processConfig.args : [],
-					logDirectory: processConfig.logDirectory,
-					threads: typeof processConfig.threads === 'number' ? processConfig.threads : undefined,
-				}),
+				mdbProcess,
 				processConfig.logDirectory,
 				this.host.logger,
 				undefined,

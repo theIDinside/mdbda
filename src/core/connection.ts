@@ -50,6 +50,7 @@ export class MdbConnection {
 		this.process.on('message', (message: unknown) => this.onMessage(message));
 		this.process.on('garbage', (text: string) => this.logger.error(`Garbage on mdb stdout: ${text}`));
 		this.process.on('stderr', (line: string) => this.logger.info(`mdb stderr: ${line}`));
+		this.process.on('stdout', (line: string) => this.logger.info(`mdb stdout: ${line}`));
 		this.process.on('spawnError', (error: NodeJS.ErrnoException) => this.onSpawnError(error));
 		this.process.on('exit', (result: { code: number | null; signal: NodeJS.Signals | null }) => this.onExit(result));
 		this.process.start();

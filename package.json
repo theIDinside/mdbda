@@ -59,6 +59,12 @@
                 "type": "string",
                 "description": "rr trace directory to replay."
               },
+              "transport": {
+                "type": "string",
+                "enum": ["stdio", "socket"],
+                "default": "stdio",
+                "description": "How mdb communicates with the debug adapter. Overrides the mdb.transport setting."
+              },
               "cwd": {
                 "type": "string",
                 "description": "Working directory for the program. mdb currently ignores cwd."
@@ -169,6 +175,12 @@
           "type": "string",
           "default": "",
           "description": "Directory for mdb logs. Leave empty to use a timestamped directory under the extension log directory."
+        },
+        "mdb.transport": {
+          "type": "string",
+          "enum": ["stdio", "socket"],
+          "default": "stdio",
+          "description": "Transport used to communicate with mdb. Socket transport uses a Unix domain socket."
         },
         "mdb.trace": {
           "type": "boolean",

@@ -1,5 +1,11 @@
 # Change Log
 
+## [Unreleased]
+
+### Added
+
+- Optional Unix socket transport for mdb, selectable with the `mdb.transport` setting or launch `transport` field.
+
 ## [0.1.0] - 2026-10-30
 
 ### Added

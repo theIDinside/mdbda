@@ -3,6 +3,8 @@ import * as fs from 'fs';
 import { EventEmitter } from 'events';
 import { encodeMessage, MessageReader } from './framing';
 import { Logger, nullLogger } from './logger';
+import { LineBuffer } from './lineBuffer';
+import { ProcessControl } from './processControl';
 
 export interface MdbProcessOptions {
 	path: string;
@@ -14,10 +16,8 @@ export interface MdbProcessOptions {
 
 export class MdbProcess extends EventEmitter {
 	private child?: ChildProcess;
-	private exited = false;
-	private exitPromise?: Promise<void>;
-	private resolveExit?: () => void;
-	private stderrBuffer = '';
+	private readonly control = new ProcessControl();
+	private readonly stderrBuffer = new LineBuffer();
 
 	constructor(private readonly opts: MdbProcessOptions, private readonly logger: Logger = nullLogger) {
 		super();
@@ -60,7 +60,7 @@ export class MdbProcess extends EventEmitter {
 	}
 
 	send(obj: unknown): void {
-		if (this.exited || !this.child?.stdin || this.child.stdin.destroyed) {
+		if (this.control.isExited || !this.child?.stdin || this.child.stdin.destroyed) {
 			this.logger.warn('Ignoring message sent to mdb after exit');
 			return;
 		}
@@ -68,40 +68,21 @@ export class MdbProcess extends EventEmitter {
 	}
 
 	kill(graceMs = 1500): Promise<void> {
-		if (this.exited || !this.child) {
+		if (this.control.isExited || !this.child) {
 			return Promise.resolve();
 		}
-		if (!this.exitPromise) {
-			this.exitPromise = new Promise((resolve) => { this.resolveExit = resolve; });
-		}
-		this.child.kill('SIGTERM');
-		const timer = setTimeout(() => {
-			if (!this.exited) {
-				this.child?.kill('SIGKILL');
-			}
-		}, graceMs);
-		return this.exitPromise.finally(() => clearTimeout(timer));
+		return this.control.kill(this.child, graceMs);
 	}
 
 	private consumeStderr(chunk: string): void {
-		this.stderrBuffer += chunk;
-		const lines = this.stderrBuffer.split(/\r?\n/);
-		this.stderrBuffer = lines.pop() ?? '';
-		for (const line of lines) {
-			this.emit('stderr', line);
-		}
+		this.stderrBuffer.push(chunk, (line) => this.emit('stderr', line));
 	}
 
 	private finish(code: number | null, signal: NodeJS.Signals | null): void {
-		if (this.exited) {
+		if (!this.control.finish()) {
 			return;
 		}
-		this.exited = true;
-		if (this.stderrBuffer.length > 0) {
-			this.emit('stderr', this.stderrBuffer);
-			this.stderrBuffer = '';
-		}
+		this.stderrBuffer.flush((line) => this.emit('stderr', line));
 		this.emit('exit', { code, signal });
-		this.resolveExit?.();
 	}
 }

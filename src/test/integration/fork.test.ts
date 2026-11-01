@@ -4,10 +4,10 @@ import * as os from 'os';
 import * as path from 'path';
 import { MdbConnection } from '../../core/connection';
 import { Host } from '../../core/host';
-import { nullLogger } from '../../core/logger';
+import { consoleLogger, nullLogger } from '../../core/logger';
 import { MdbProcess } from '../../core/mdbProcess';
 import { MdbSessionAdapter } from '../../core/sessionAdapter';
-import { MiniDapClient, binaryDirectory, resolveMdbPath } from './miniDapClient';
+import { Log, MiniDapClient, binaryDirectory, resolveMdbPath } from './miniDapClient';
 
 const forkSubject = path.join(binaryDirectory, 'fork');
 const childSubject = path.join(binaryDirectory, 'childprogram');
@@ -20,8 +20,8 @@ suite('mdb fork integration', () => {
 			this.skip();
 		}
 
-		const logDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'mdbda-fork-'));
-		const process = new MdbProcess({ path: mdbPath, args: [], logDirectory });
+		const log = new Log(fs.mkdtempSync(path.join(os.tmpdir(), 'mdbda-fork-')));
+		const process = new MdbProcess({ path: mdbPath, args: [], logDirectory: log.directory() });
 		const errors: string[] = [];
 		let connection!: MdbConnection;
 		let childAdapter: MdbSessionAdapter | undefined;
@@ -36,13 +36,13 @@ suite('mdb fork integration', () => {
 			showError: (message) => { errors.push(message); },
 			startChildSession: (parent, pid, name) => startChildSession(parent, pid, name),
 		};
-		connection = new MdbConnection(process, logDirectory);
+		connection = new MdbConnection(process, log.directory());
 		const parentAdapter = new MdbSessionAdapter(connection, host, {
 			sessionType: 'ptrace',
 			isChild: false,
 			config: { name: 'fork', sessionType: 'ptrace', program: forkSubject, args: [childSubject] },
 		});
-		const parentClient = new MiniDapClient(parentAdapter);
+		const parentClient = new MiniDapClient(parentAdapter, log);
 
 		startChildSession = (_parent, childPid) => {
 			onProcess();
@@ -52,7 +52,7 @@ suite('mdb fork integration', () => {
 				childPid,
 				config: { name: `fork [fork ${childPid}]`, request: 'attach', processId: childPid },
 			});
-			childClient = new MiniDapClient(childAdapter);
+			childClient = new MiniDapClient(childAdapter, log);
 			childSequence = driveChild(childClient);
 		};
 
@@ -69,6 +69,11 @@ suite('mdb fork integration', () => {
 			assert.strictEqual(breakpoints.success, true);
 			const configured = await client.request('configurationDone');
 			assert.strictEqual(configured.success, true);
+			// mdb stops every exec'd process at main (SupervisorState::HandleExec), so the child has to be resumed
+			// for it, and the parent waiting on it, to exit.
+			const stopped = await client.waitFor((message) => message.type === 'event' && message.event === 'stopped');
+			const resumed = await client.request('continue', { threadId: (stopped as Record<string, any>).body.threadId });
+			assert.strictEqual(resumed.success, true);
 		}
 
 		try {
@@ -106,7 +111,7 @@ suite('mdb fork integration', () => {
 			childAdapter?.dispose();
 			parentAdapter.dispose();
 			await process.kill(100);
-			fs.rmSync(logDirectory, { recursive: true, force: true });
+			log.dispose();
 		}
 	});
 });

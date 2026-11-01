@@ -17,10 +17,11 @@ Visual Studio Code.
 | `mdb.extraArgs` | `[]` | Additional arguments passed to mdb for every session. |
 | `mdb.threads` | unset | Optional mdb worker thread count. |
 | `mdb.logDirectory` | timestamped extension log directory | Directory for mdb log files. |
+| `mdb.transport` | `stdio` | Transport used to communicate with mdb: `stdio` or `socket` (Unix domain socket). |
 | `mdb.trace` | `false` | Log DAP messages sent and received by the proxy to the `mdb` output channel. Takes effect after reloading the window. |
 
 Launch configurations can override the mdb executable with `mdbPath`, add per-session mdb arguments with `mdbArgs`, and
-choose a log directory with `logDirectory`.
+choose a log directory with `logDirectory`. The `transport` launch field overrides `mdb.transport` for that session.
 
 ## Launch configurations
 
@@ -40,6 +41,7 @@ choose a log directory with `logDirectory`.
 ```
 
 `program` must name an executable file. `args` is an optional array of program arguments.
+`transport` accepts `stdio` or `socket`; when omitted, the `mdb.transport` setting is used.
 
 ### Replay an rr trace
 
