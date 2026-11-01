@@ -56,9 +56,7 @@ suite('mdb fork integration', () => {
     };
 
     async function driveChild(client: MiniDapClient): Promise<void> {
-      const initialized = await client.request('initialize', { adapterID: 'mdbda' });
-      assert.strictEqual(initialized.success, true);
-      await client.waitFor((message) => message.type === 'event' && message.event === 'initialized');
+      await client.initialize();
       const attached = await client.request('attach', { processId: 0 });
       assert.strictEqual(attached.success, true);
       const breakpoints = await client.request('setBreakpoints', {
@@ -76,9 +74,7 @@ suite('mdb fork integration', () => {
     }
 
     try {
-      const initialized = await parentClient.request('initialize', { adapterID: 'mdbda' });
-      assert.strictEqual(initialized.success, true);
-      await parentClient.waitFor((message) => message.type === 'event' && message.event === 'initialized');
+      await parentClient.initialize();
       const launched = await parentClient.request('launch', { program: forkSubject, args: [childSubject] });
       assert.strictEqual(launched.success, true);
       const configured = await parentClient.request('configurationDone');

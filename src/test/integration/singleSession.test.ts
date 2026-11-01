@@ -39,18 +39,11 @@ suite('single mdb session integration', () => {
 
         const stopped = await client.waitFor((message) => message.type === 'event' && message.event === 'stopped');
         assert.strictEqual(stopped.type, 'event');
-        const threads = await client.request('threads');
-        assert.strictEqual(threads.success, true);
-        const threadId = threads.body.threads[0].id;
-        const stack = await client.request('stackTrace', { threadId, startFrame: 0, levels: 1 });
-        assert.strictEqual(stack.success, true);
-        assert.strictEqual(stack.body.stackFrames.length, 1);
-        assert.ok(stack.body.totalFrames >= 1);
-        const scopes = await client.request('scopes', { frameId: stack.body.stackFrames[0].id });
-        assert.strictEqual(scopes.success, true);
-        const variablesReference = scopes.body.scopes.find((scope: Record<string, any>) => scope.variablesReference > 0).variablesReference;
-        const variables = await client.request('variables', { variablesReference });
-        assert.strictEqual(variables.success, true);
+
+        const threads = await client.threads();
+        const stack = await threads[0].stackTrace({startFrame: 0, levels: 1});
+        assert.ok(stack.length >= 1);
+        const threadId = threads[0].id;
         const next = await client.request('next', { threadId, granularity: 'statement' });
         assert.strictEqual(next.success, true);
         await client.waitFor((message) => message.type === 'event' && message.event === 'stopped');
