@@ -1,7 +1,6 @@
 import * as assert from 'assert';
 import { ChildProcessWithoutNullStreams, spawn } from 'child_process';
 import * as fs from 'fs';
-import * as net from 'net';
 import * as os from 'os';
 import * as path from 'path';
 import { MdbConnection } from '../../core/connection';
@@ -9,168 +8,28 @@ import { Host } from '../../core/host';
 import { nullLogger } from '../../core/logger';
 import { MdbSocketProcess } from '../../core/mdbSocketProcess';
 import { MdbSessionAdapter } from '../../core/sessionAdapter';
+import { ShimConnection, ShimHello, ShimListener } from '../../core/shimListener';
 import { TestConfig } from '../testPaths';
 import { Log, MiniDapClient } from './miniDapClient';
 
 const testConfig = TestConfig.readTestConfig();
 
-const shimMagic = Buffer.from([0x4d, 0x44, 0x42, 0x53, 0x48, 0x49, 0x4d, 0x00]);
-const shimHeaderSize = 16;
-const maxShimPayload = 1024 * 1024;
-
-interface ShimHello {
-  pid: number;
-  argv: string[];
-}
-
-function parseShimHello(payload: Buffer): ShimHello {
-  if (payload.length < 8) {
-    throw new Error('Shim hello payload is truncated');
-  }
-  const pid = payload.readUInt32BE(0);
-  const argumentCount = payload.readUInt32BE(4);
-  if (pid === 0 || argumentCount === 0 || argumentCount > 4096) {
-    throw new Error('Shim hello has invalid pid/argc');
-  }
-  let offset = 8;
-  const argv: string[] = [];
-  for (let index = 0; index < argumentCount; index++) {
-    if (offset + 4 > payload.length) {
-      throw new Error('Shim hello argument length is truncated');
-    }
-    const length = payload.readUInt32BE(offset);
-    offset += 4;
-    if (offset + length > payload.length) {
-      throw new Error('Shim hello argument is truncated');
-    }
-    argv.push(payload.subarray(offset, offset + length).toString('utf8'));
-    offset += length;
-  }
-  if (offset !== payload.length) {
-    throw new Error('Shim hello has trailing data');
-  }
-  return { pid, argv };
-}
-
-function shimFrame(type: number, payload: Buffer = Buffer.alloc(0)): Buffer {
-  const header = Buffer.alloc(shimHeaderSize);
-  shimMagic.copy(header, 0);
-  header.writeUInt16BE(1, 8);
-  header[10] = type;
-  header.writeUInt32BE(payload.length, 12);
-  return Buffer.concat([header, payload]);
-}
-
-class ShimListener {
-  private readonly server = net.createServer((socket) => this.onConnection(socket));
-  private socket: net.Socket | undefined;
-  private buffer = Buffer.alloc(0);
-  private hello: ShimHello | undefined;
-  private helloWaiter: { resolve: (value: ShimHello) => void; reject: (error: Error) => void } | undefined;
-
-  constructor() {
-    this.server.on('error', (error) => this.rejectHello(error));
-  }
-
-  listen(socketPath: string): Promise<void> {
-    return new Promise((resolve, reject) => {
-      this.server.once('error', reject);
-      this.server.listen(socketPath, () => {
-        this.server.off('error', reject);
-        resolve();
-      });
-    });
-  }
-
-  waitForHello(timeoutMs: number): Promise<ShimHello> {
-    if (this.hello) {
-      return Promise.resolve(this.hello);
-    }
-    return new Promise((resolve, reject) => {
-      const timer = setTimeout(() => finish(new Error(`Timed out after ${timeoutMs} ms waiting for shim hello`)), timeoutMs);
-      const finish = (error: Error | undefined, value?: ShimHello): void => {
+/** Resolves with the first shim that connects to `listener` and sends a valid hello. */
+function nextShimHello(listener: ShimListener, timeoutMs: number): Promise<{ connection: ShimConnection; hello: ShimHello }> {
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      listener.off('connection', onConnection);
+      reject(new Error(`Timed out after ${timeoutMs} ms waiting for shim hello`));
+    }, timeoutMs);
+    const onConnection = (connection: ShimConnection): void => {
+      connection.once('hello', (hello: ShimHello) => {
         clearTimeout(timer);
-        this.helloWaiter = undefined;
-        if (error) {
-          reject(error);
-        } else {
-          resolve(value!);
-        }
-      };
-      this.helloWaiter = {
-        resolve: (value) => finish(undefined, value),
-        reject: (error) => finish(error),
-      };
-    });
-  }
-
-  private onConnection(socket: net.Socket): void {
-    if (this.socket) {
-      socket.destroy();
-      return;
-    }
-    this.socket = socket;
-    socket.on('data', (chunk: Buffer) => this.onData(chunk));
-    socket.on('error', (error) => this.rejectHello(error));
-    socket.on('close', () => {
-      if (!this.hello) {
-        this.rejectHello(new Error('Shim disconnected before hello'));
-      }
-    });
-  }
-
-  private onData(chunk: Buffer): void {
-    if (this.buffer.length + chunk.length > shimHeaderSize + maxShimPayload) {
-      this.rejectHello(new Error('Shim hello exceeds the payload limit'));
-      this.socket?.destroy();
-      return;
-    }
-    this.buffer = Buffer.concat([this.buffer, chunk]);
-    if (this.buffer.length < shimHeaderSize) {
-      return;
-    }
-    const header = this.buffer.subarray(0, shimHeaderSize);
-    if (!header.subarray(0, 8).equals(shimMagic) || header.readUInt16BE(8) !== 1 || header[10] !== 1 || header[11] !== 0) {
-      this.rejectHello(new Error('Invalid shim hello header'));
-      this.socket?.destroy();
-      return;
-    }
-    const payloadLength = header.readUInt32BE(12);
-    if (payloadLength > maxShimPayload) {
-      this.rejectHello(new Error('Shim hello exceeds the payload limit'));
-      this.socket?.destroy();
-      return;
-    }
-    if (this.buffer.length < shimHeaderSize + payloadLength) {
-      return;
-    }
-    if (this.buffer.length !== shimHeaderSize + payloadLength) {
-      this.rejectHello(new Error('Shim sent unexpected data after hello'));
-      this.socket?.destroy();
-      return;
-    }
-    try {
-      this.hello = parseShimHello(this.buffer.subarray(shimHeaderSize));
-      this.helloWaiter?.resolve(this.hello);
-    } catch (error) {
-      this.rejectHello(error instanceof Error ? error : new Error(String(error)));
-      this.socket?.destroy();
-    }
-  }
-
-  private rejectHello(error: Error): void {
-    this.helloWaiter?.reject(error);
-  }
-
-  go(): void {
-    assert.ok(this.socket && !this.socket.destroyed, 'shim socket must be connected');
-    this.socket.write(shimFrame(2));
-  }
-
-  async close(): Promise<void> {
-    this.socket?.destroy();
-    await new Promise<void>((resolve) => this.server.close(() => resolve()));
-  }
+        listener.off('connection', onConnection);
+        resolve({ connection, hello });
+      });
+    };
+    listener.on('connection', onConnection);
+  });
 }
 
 suite('mdb shim attach integration', () => {
@@ -196,6 +55,7 @@ suite('mdb shim attach integration', () => {
       trace: false,
       showError: (message) => { errors.push(message); },
       startChildSession: () => assert.fail('stackframes should not fork'),
+      runInTerminal: () => { throw new Error('runInTerminal is not used by this test'); },
     };
     const adapters: MdbSessionAdapter[] = [];
     try {
@@ -205,6 +65,7 @@ suite('mdb shim attach integration', () => {
         const socketPath = path.join(socketDirectory, 'handoff.sock');
         const listener = new ShimListener();
         await listener.listen(socketPath);
+        const helloReceived = nextShimHello(listener, 10000);
         const shim: ChildProcessWithoutNullStreams = spawn(shimPath, [
           '--tracer-pid', String(mdb.pid), '--socket', socketPath, '--', subject,
         ]);
@@ -214,7 +75,7 @@ suite('mdb shim attach integration', () => {
         shim.stderr.resume();
         shim.stdin.on('error', (error) => { errors.push(error.message); });
         try {
-          const hello = await listener.waitForHello(10000);
+          const { connection: shimConnection, hello } = await helloReceived;
           const pid = hello.pid;
           assert.strictEqual(hello.argv[0], subject, 'shim must report the target executable');
           assert.strictEqual(pid, shim.pid, 'the shim must exec the subject in the same process');
@@ -237,7 +98,7 @@ suite('mdb shim attach integration', () => {
           const configured = await client.request('configurationDone');
           assert.strictEqual(configured.success, true, configured.message);
 
-          listener.go();
+          shimConnection.go();
           const breakpointStop = await client.waitFor((message) => message.type === 'event'
             && message.event === 'stopped' && (message.body as { reason?: string })?.reason === 'breakpoint');
           const threadId = (breakpointStop.body as { threadId: number }).threadId;

@@ -213,3 +213,13 @@ export function stripMdbEventFields(event: Event): { event: Event; processes?: n
   return { event: stripped, processes };
 }
 
+
+export function shellQuote(argument: string): string {
+  return /^[A-Za-z0-9_@%+=:,./-]+$/.test(argument) ? argument : `'${argument.replace(/'/g, `'\\''`)}'`;
+}
+
+/** Substitutes `{shimPath}` and `{shimArgs}` in a runner's debugger argument templates. */
+export function substituteChildDebuggerArgs(templates: string[], shimPath: string, shimArgs: string[]): string[] {
+  const quotedShimArgs = shimArgs.map(shellQuote).join(' ');
+  return templates.map((template) => template.replaceAll('{shimPath}', shimPath).replaceAll('{shimArgs}', quotedShimArgs));
+}
