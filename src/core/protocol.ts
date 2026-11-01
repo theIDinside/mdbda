@@ -53,10 +53,10 @@ export interface Source extends Record<string, unknown> {
 export type SessionType = 'ptrace' | 'rr';
 
 export const FORWARDED_REQUESTS: ReadonlySet<string> = new Set([
-	'initialize', 'launch', 'attach', 'configurationDone', 'setBreakpoints', 'setFunctionBreakpoints',
-	'setInstructionBreakpoints', 'threads', 'stackTrace', 'scopes', 'variables', 'evaluate', 'pause', 'continue',
-	'next', 'stepIn', 'stepOut', 'reverseContinue', 'disassemble', 'readMemory', 'writeMemory', 'disconnect',
-	'terminate', 'customRequest',
+  'initialize', 'launch', 'attach', 'configurationDone', 'setBreakpoints', 'setFunctionBreakpoints',
+  'setInstructionBreakpoints', 'threads', 'stackTrace', 'scopes', 'variables', 'evaluate', 'pause', 'continue',
+  'next', 'stepIn', 'stepOut', 'reverseContinue', 'disassemble', 'readMemory', 'writeMemory', 'disconnect',
+  'terminate', 'customRequest',
 ]);
 
 export const LOCALLY_ANSWERED: ReadonlySet<string> = new Set(['setExceptionBreakpoints']);
@@ -64,6 +64,6 @@ export const LOCALLY_ANSWERED: ReadonlySet<string> = new Set(['setExceptionBreak
 export const CUSTOM_COMMANDS = ['continueAll', 'pauseAll', 'getProcesses'] as const;
 
 export const CONFIG_TOKEN_COMMANDS: ReadonlySet<string> = new Set([
-	'initialize', 'launch', 'attach', 'configurationDone', 'setBreakpoints', 'setFunctionBreakpoints',
-	'setInstructionBreakpoints',
+  'initialize', 'launch', 'attach', 'configurationDone', 'setBreakpoints', 'setFunctionBreakpoints',
+  'setInstructionBreakpoints',
 ]);

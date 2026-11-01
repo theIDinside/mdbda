@@ -19,14 +19,21 @@
       {
         "type": "mdb",
         "label": "mdb",
-        "languages": ["c", "cpp", "rust"],
+        "languages": [
+          "c",
+          "cpp",
+          "rust"
+        ],
         "configurationAttributes": {
           "launch": {
             "type": "object",
             "properties": {
               "sessionType": {
                 "type": "string",
-                "enum": ["ptrace", "rr"],
+                "enum": [
+                  "ptrace",
+                  "rr"
+                ],
                 "default": "ptrace",
                 "description": "Debug a live process with ptrace or replay an rr trace."
               },
@@ -36,7 +43,9 @@
               },
               "args": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {
+                  "type": "string"
+                },
                 "description": "Arguments for the program. mdb currently wraps each argument in literal quote characters, which may change how the program receives it."
               },
               "stopOnEntry": {
@@ -46,13 +55,18 @@
               },
               "breakpointBehavior": {
                 "type": "string",
-                "enum": ["Stop all threads", "Stop single thread"],
+                "enum": [
+                  "Stop all threads",
+                  "Stop single thread"
+                ],
                 "default": "Stop all threads",
                 "description": "Choose whether a breakpoint stops every thread or only the thread that hit it."
               },
               "views": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {
+                  "type": "string"
+                },
                 "description": "Paths to .mdbv view files to load for this session."
               },
               "traceDir": {
@@ -61,7 +75,10 @@
               },
               "transport": {
                 "type": "string",
-                "enum": ["stdio", "socket"],
+                "enum": [
+                  "stdio",
+                  "socket"
+                ],
                 "default": "stdio",
                 "description": "How mdb communicates with the debug adapter. Overrides the mdb.transport setting."
               },
@@ -79,7 +96,9 @@
               },
               "mdbArgs": {
                 "type": "array",
-                "items": {"type": "string"},
+                "items": {
+                  "type": "string"
+                },
                 "description": "Additional arguments passed to the mdb executable."
               },
               "logDirectory": {
@@ -117,39 +136,92 @@
           {
             "label": "mdb: Launch",
             "description": "Launch a program with mdb",
-            "body": {"type": "mdb", "request": "launch", "program": "${workspaceFolder}/program"}
+            "body": {
+              "type": "mdb",
+              "request": "launch",
+              "program": "${workspaceFolder}/program"
+            }
           },
           {
             "label": "mdb: Replay rr trace",
             "description": "Replay an rr trace with mdb",
-            "body": {"type": "mdb", "request": "launch", "sessionType": "rr", "traceDir": "${workspaceFolder}/trace"}
+            "body": {
+              "type": "mdb",
+              "request": "launch",
+              "sessionType": "rr",
+              "traceDir": "${workspaceFolder}/trace"
+            }
           }
         ]
       }
     ],
     "breakpoints": [
-      {"language": "c"},
-      {"language": "cpp"},
-      {"language": "rust"}
+      {
+        "language": "c"
+      },
+      {
+        "language": "cpp"
+      },
+      {
+        "language": "rust"
+      }
     ],
     "commands": [
-      {"command": "mdb.continueAll", "title": "mdb: Continue All Threads", "icon": "$(run-all)"},
-      {"command": "mdb.pauseAll", "title": "mdb: Pause All Threads", "icon": "$(debug-pause)"},
-      {"command": "mdb.loadViews", "title": "mdb: Load Views File…"},
-      {"command": "mdb.selectReplayProcess", "title": "mdb: Select Replay Process"},
-      {"command": "mdb.reverseContinue", "title": "mdb: Reverse Continue"}
+      {
+        "command": "mdb.continueAll",
+        "title": "mdb: Continue All Threads",
+        "icon": "$(run-all)"
+      },
+      {
+        "command": "mdb.pauseAll",
+        "title": "mdb: Pause All Threads",
+        "icon": "$(debug-pause)"
+      },
+      {
+        "command": "mdb.loadViews",
+        "title": "mdb: Load Views File…"
+      },
+      {
+        "command": "mdb.selectReplayProcess",
+        "title": "mdb: Select Replay Process"
+      },
+      {
+        "command": "mdb.reverseContinue",
+        "title": "mdb: Reverse Continue"
+      }
     ],
     "menus": {
       "commandPalette": [
-        {"command": "mdb.continueAll", "when": "debugType == mdb"},
-        {"command": "mdb.pauseAll", "when": "debugType == mdb"},
-        {"command": "mdb.loadViews", "when": "debugType == mdb"},
-        {"command": "mdb.selectReplayProcess", "when": "debugType == mdb && mdb.isReplay"},
-        {"command": "mdb.reverseContinue", "when": "debugType == mdb && mdb.isReplay"}
+        {
+          "command": "mdb.continueAll",
+          "when": "debugType == mdb"
+        },
+        {
+          "command": "mdb.pauseAll",
+          "when": "debugType == mdb"
+        },
+        {
+          "command": "mdb.loadViews",
+          "when": "debugType == mdb"
+        },
+        {
+          "command": "mdb.selectReplayProcess",
+          "when": "debugType == mdb && mdb.isReplay"
+        },
+        {
+          "command": "mdb.reverseContinue",
+          "when": "debugType == mdb && mdb.isReplay"
+        }
       ],
       "debug/toolBar": [
-        {"command": "mdb.continueAll", "when": "debugType == mdb"},
-        {"command": "mdb.pauseAll", "when": "debugType == mdb"}
+        {
+          "command": "mdb.continueAll",
+          "when": "debugType == mdb"
+        },
+        {
+          "command": "mdb.pauseAll",
+          "when": "debugType == mdb"
+        }
       ]
     },
     "configuration": {
@@ -162,12 +234,17 @@
         },
         "mdb.extraArgs": {
           "type": "array",
-          "items": {"type": "string"},
+          "items": {
+            "type": "string"
+          },
           "default": [],
           "description": "Extra arguments passed to mdb for every session."
         },
         "mdb.threads": {
-          "type": ["number", "null"],
+          "type": [
+            "number",
+            "null"
+          ],
           "default": null,
           "description": "Optional mdb worker thread count."
         },
@@ -178,7 +255,10 @@
         },
         "mdb.transport": {
           "type": "string",
-          "enum": ["stdio", "socket"],
+          "enum": [
+            "stdio",
+            "socket"
+          ],
           "default": "stdio",
           "description": "Transport used to communicate with mdb. Socket transport uses a Unix domain socket."
         },
@@ -204,16 +284,16 @@
     "test": "vscode-test"
   },
   "devDependencies": {
-    "@types/vscode": "^1.144.0",
     "@types/mocha": "^10.0.10",
-    "@types/node": "22.x",
-    "typescript-eslint": "^8.56.1",
-    "eslint": "^9.39.3",
-    "typescript": "^5.9.3",
-    "ts-loader": "^9.5.4",
-    "webpack": "^5.105.3",
-    "webpack-cli": "^6.0.1",
+    "@types/node": "^22.20.5",
+    "@types/vscode": "^1.144.0",
     "@vscode/test-cli": "^0.0.12",
-    "@vscode/test-electron": "^2.5.2"
+    "@vscode/test-electron": "^2.5.2",
+    "eslint": "^9.39.3",
+    "ts-loader": "^9.5.4",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.56.1",
+    "webpack": "^5.105.3",
+    "webpack-cli": "^6.0.1"
   }
 }
