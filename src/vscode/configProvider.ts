@@ -84,14 +84,27 @@ export class MdbConfigurationProvider implements vscode.DebugConfigurationProvid
       configuration.views = configuration.views.map((view: string) => path.resolve(basePath, view));
     }
 
+    const childDebuggerArgs = configuration.childDebuggerArgs;
+    const runsShims = childDebuggerArgs !== undefined;
+    if (runsShims) {
+      if (sessionType !== 'ptrace' || !Array.isArray(childDebuggerArgs)
+        || !childDebuggerArgs.every((arg: unknown) => typeof arg === 'string')
+        || !childDebuggerArgs.some((arg: string) => arg.includes('{shimPath}'))) {
+        void vscode.window.showErrorMessage('childDebuggerArgs must be a list of strings for a ptrace launch, and one of them must contain {shimPath}.');
+        return undefined;
+      }
+      // The command runs in a terminal, so its cwd and env apply as given.
+      configuration.cwd = basePath;
+    }
+
     const warnings: string[] = [];
-    if (Array.isArray(configuration.args) && configuration.args.length > 0) {
+    if (!runsShims && Array.isArray(configuration.args) && configuration.args.length > 0) {
       warnings.push('mdb currently passes each argument wrapped in literal quote characters, so program arguments may be mangled');
     }
-    if (typeof configuration.cwd === 'string' && configuration.cwd.length > 0) {
+    if (!runsShims && typeof configuration.cwd === 'string' && configuration.cwd.length > 0) {
       warnings.push('mdb currently ignores cwd');
     }
-    if (configuration.env && typeof configuration.env === 'object' && Object.keys(configuration.env).length > 0) {
+    if (!runsShims && configuration.env && typeof configuration.env === 'object' && Object.keys(configuration.env).length > 0) {
       warnings.push('mdb currently ignores env');
     }
     if (warnings.length > 0) {
@@ -136,9 +149,21 @@ export class MdbConfigurationProvider implements vscode.DebugConfigurationProvid
       void vscode.window.showErrorMessage(`Unsupported mdb transport: ${String(transport)}`);
       return undefined;
     }
+    let shimPath: string | undefined;
+    if (runsShims) {
+      shimPath = path.join(path.dirname(resolvedMdbPath), 'mdb_shim');
+      try {
+        fs.accessSync(shimPath, fs.constants.X_OK);
+      } catch {
+        void vscode.window.showErrorMessage(`childDebuggerArgs needs mdb_shim next to mdb, but ${shimPath} is not an executable`);
+        return undefined;
+      }
+    }
     configuration.__mdb = {
       path: resolvedMdbPath,
-      args: configuredArgs,
+      // One mdb serves every process the command starts, so it has to outlive each of them.
+      args: runsShims ? [...configuredArgs, '--keep-alive'] : configuredArgs,
+      ...(shimPath ? { shimPath } : {}),
       logDirectory,
       transport,
       ...(typeof configuredThreads === 'number' && configuredThreads > 0 ? { threads: configuredThreads } : {}),

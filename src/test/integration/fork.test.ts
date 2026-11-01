@@ -34,6 +34,7 @@ suite('mdb fork integration', () => {
       trace: false,
       showError: (message) => { errors.push(message); },
       startChildSession: (parent, pid, name) => startChildSession(parent, pid, name),
+      runInTerminal: () => { throw new Error('runInTerminal is not used by this test'); },
     };
     connection = new MdbConnection(process, log.directory());
     const parentAdapter = new MdbSessionAdapter(connection, host, {

@@ -31,7 +31,8 @@ class FakeMdbProcess extends EventEmitter {
 }
 
 function createHost(): Host {
-  return { logger: nullLogger, trace: false, showError: () => undefined, startChildSession: () => undefined };
+  return { logger: nullLogger, trace: false, showError: () => undefined, startChildSession: () => undefined,
+    runInTerminal: () => { throw new Error('runInTerminal is not used by this test'); } };
 }
 
 function createAdapter(connection: MdbConnection, host = createHost(), opts: Partial<ConstructorParameters<typeof MdbSessionAdapter>[2]> = {}): MdbSessionAdapter {
