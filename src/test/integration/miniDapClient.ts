@@ -11,20 +11,15 @@ import { MdbSessionAdapter } from '../../core/sessionAdapter';
 import { ProtocolMessage } from '../../core/protocol';
 import { PrepareStacktrace } from './testUtils';
 import { consoleLogger } from '../../core/logger';
-
-export const defaultMdbPath = '/home/sfarre/dev/dbm/obj/debug/bin/mdb';
-export const binaryDirectory = '/home/sfarre/dev/dbm/obj/debug/bin';
-
-export function resolveMdbPath(): string {
-  return process.env.MDB_PATH ?? defaultMdbPath;
-}
+import { TestConfig } from '../testPaths';
 
 export function createMiniDapSession(
+  testConfig: TestConfig,
   config: ConstructorParameters<typeof MdbSessionAdapter>[2]['config'],
   options: { transport?: 'stdio' | 'socket'; timeoutMs?: number; host?: Host } = {},
 ) {
-  const log = new Log(fs.mkdtempSync(path.join(os.tmpdir(), 'mdbda-integration-')));
-  const processOptions = { path: resolveMdbPath(), args: [], logDirectory: log.directory() };
+  const log = new Log(testConfig);
+  const processOptions = { path: testConfig.mdbPath, args: [], logDirectory: log.directory() };
   const mdbProcess = options.transport === 'socket'
     ? new MdbSocketProcess(processOptions)
     : new MdbProcess(processOptions);
@@ -55,7 +50,11 @@ export function createMiniDapSession(
 }
 
 export class Log {
-  constructor(private logDirectory: string, private persist: boolean = false) {}
+  private logDirectory: string;
+  constructor(testConfig: TestConfig, private persist: boolean = false) {
+    const dir = testConfig.logDirectory ?? path.join(os.tmpdir(), 'mdbda-fork-');
+    this.logDirectory = fs.mkdtempSync(dir);
+  }
 
   persistLogs() {
     this.persist = true;

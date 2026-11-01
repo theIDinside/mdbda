@@ -4,23 +4,22 @@ import * as os from 'os';
 import * as path from 'path';
 import { MdbConnection } from '../../core/connection';
 import { Host } from '../../core/host';
-import { consoleLogger, nullLogger } from '../../core/logger';
+import { nullLogger } from '../../core/logger';
 import { MdbProcess } from '../../core/mdbProcess';
 import { MdbSessionAdapter } from '../../core/sessionAdapter';
-import { Log, MiniDapClient, binaryDirectory, resolveMdbPath } from './miniDapClient';
+import { Log, MiniDapClient } from './miniDapClient';
+import { TestConfig } from '../testPaths';
 
-const forkSubject = path.join(binaryDirectory, 'fork');
-const childSubject = path.join(binaryDirectory, 'childprogram');
-const forkSource = '/home/sfarre/dev/dbm/test/fork.cpp';
+const testConfig = TestConfig.readTestConfig();
+
+const forkSubject = testConfig.testSubject('fork');
+const childSubject = testConfig.testSubject('childprogram');
+const forkSource = testConfig.file('test/fork.cpp');
 
 suite('mdb fork integration', () => {
   test('attaches each fork child and completes both session lifecycles', async function () {
-    const mdbPath = resolveMdbPath();
-    if (!fs.existsSync(mdbPath) || !fs.existsSync(forkSubject) || !fs.existsSync(childSubject) || !fs.existsSync(forkSource)) {
-      this.skip();
-    }
-
-    const log = new Log(fs.mkdtempSync(path.join(os.tmpdir(), 'mdbda-fork-')));
+    const mdbPath = testConfig.mdbPath;
+    const log = new Log(testConfig);
     const process = new MdbProcess({ path: mdbPath, args: [], logDirectory: log.directory() });
     const errors: string[] = [];
     let connection!: MdbConnection;

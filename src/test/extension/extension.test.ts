@@ -2,33 +2,8 @@ import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as vscode from 'vscode';
+import { TestConfig } from '../testPaths';
 
-function canExecute(candidate: string): boolean {
-  try {
-    fs.accessSync(candidate, fs.constants.X_OK);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-function findMdb(): string | undefined {
-  const configured = process.env.MDB_PATH ?? vscode.workspace.getConfiguration('mdb').get<string>('path', 'mdb');
-  if (path.isAbsolute(configured)) {
-    return canExecute(configured) ? configured : undefined;
-  }
-  if (configured.includes(path.sep)) {
-    const relative = path.resolve(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath ?? process.cwd(), configured);
-    return canExecute(relative) ? relative : undefined;
-  }
-  for (const directory of (process.env.PATH ?? '').split(path.delimiter)) {
-    const candidate = path.join(directory, configured);
-    if (canExecute(candidate)) {
-      return candidate;
-    }
-  }
-  return undefined;
-}
 
 function waitForActiveStackItem(timeoutMs: number): { promise: Promise<void>; cancel(): void } {
   let subscription: vscode.Disposable | undefined;
@@ -69,6 +44,8 @@ function waitForActiveStackItem(timeoutMs: number): { promise: Promise<void>; ca
 }
 
 suite('mdb extension', () => {
+  const testConfig = TestConfig.readTestConfig();
+
   test('activates and contributes the mdb debugger', async () => {
     const extension = vscode.extensions.all.find((candidate) => candidate.packageJSON.name === 'mdbda');
     assert.ok(extension, 'mdbda extension should be present in the Extension Host');
@@ -79,11 +56,9 @@ suite('mdb extension', () => {
   });
 
   test('starts helloworld and pauses on entry', async function () {
-    const mdb = findMdb();
-    const program = '/home/sfarre/dev/dbm/obj/debug/bin/helloworld';
-    if (!mdb || !canExecute(program)) {
-      this.skip();
-    }
+    const mdb = testConfig.mdbPath;
+    const program = testConfig.testSubject('helloworld');
+
     let session: vscode.DebugSession | undefined;
     let startSubscription: vscode.Disposable | undefined;
     let resolveSession: (value: vscode.DebugSession) => void = () => undefined;

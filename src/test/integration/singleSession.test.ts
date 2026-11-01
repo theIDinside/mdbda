@@ -1,23 +1,23 @@
 import * as assert from 'assert';
 import * as fs from 'fs';
 import * as path from 'path';
-import { binaryDirectory, createMiniDapSession, resolveMdbPath } from './miniDapClient';
+import { createMiniDapSession } from './miniDapClient';
+import { TestConfig } from '../testPaths';
 
-const defaultSubject = path.join(binaryDirectory, 'stackframes');
-const subjectSource = '/home/sfarre/dev/dbm/test/stackframes.cpp';
+const testConfig = TestConfig.readTestConfig();
+const defaultSubject = testConfig.testSubject("stackframes");
+const subjectSource = testConfig.file('test/stackframes.cpp');
 
 suite('single mdb session integration', () => {
   for (const transport of ['stdio', 'socket'] as const) {
     test(`runs the initialize, breakpoint, launch, inspect, step, and exit lifecycle (${transport})`, async function () {
-      const mdbPath = resolveMdbPath();
-      if (!fs.existsSync(mdbPath) || !fs.existsSync(defaultSubject) || !fs.existsSync(subjectSource)) {
-        this.skip();
-      }
+
       const sourceText = fs.readFileSync(subjectSource, 'utf8');
       const breakpointLine = sourceText.split(/\r?\n/).findIndex((line) => line.includes('// BPLine1')) + 1;
       assert.ok(breakpointLine > 0, 'expected BPLine1 marker in stackframes.cpp');
 
       const session = createMiniDapSession(
+        testConfig,
         { name: 'stackframes', sessionType: 'ptrace', program: defaultSubject, args: [] },
         { transport, timeoutMs: 10000 },
       );
