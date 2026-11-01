@@ -73,6 +73,182 @@ export class Log {
   }
 }
 
+export interface RequestedVariableData {
+	name: string;
+	value: string;
+	variablesReference: number;
+	type?: string;
+	evaluateName?: string;
+	namedVariables?: number;
+	indexedVariables?: number;
+	memoryReference?: string;
+}
+
+export interface ThreadData {
+	id: number;
+	name: string;
+}
+
+export interface StackFrameData {
+	id: number;
+	name: string;
+	source?: Record<string, unknown>;
+	line?: number;
+	column?: number;
+	endLine?: number;
+	endColumn?: number;
+	presentationHint?: string;
+	moduleId?: string | number;
+}
+
+export interface ScopeData {
+	name: string;
+	variablesReference: number;
+	expensive: boolean;
+	presentationHint?: string;
+	namedVariables?: number;
+	indexedVariables?: number;
+	source?: Record<string, unknown>;
+	line?: number;
+	column?: number;
+}
+
+export class Thread {
+  constructor(private readonly client: MiniDapClient, readonly data: ThreadData) {}
+
+  get id() {
+    return this.data.id;
+  }
+
+  get name() {
+    return this.data.name;
+  }
+
+  stackTrace(args: { startFrame?: number; levels?: number } = {}): Promise<StackFrame[]> {
+    return this.client.stackTrace(this.id, args);
+  }
+}
+
+export class StackFrame {
+  constructor(private readonly client: MiniDapClient, readonly data: StackFrameData) {}
+
+  get id() {
+    return this.data.id;
+  }
+
+  get name() {
+    return this.data.name;
+  }
+
+  get source() {
+    return this.data.source;
+  }
+
+  get line() {
+    return this.data.line;
+  }
+
+  get column() {
+    return this.data.column;
+  }
+
+  get endLine() {
+    return this.data.endLine;
+  }
+
+  get endColumn() {
+    return this.data.endColumn;
+  }
+
+  get presentationHint() {
+    return this.data.presentationHint;
+  }
+
+  get moduleId() {
+    return this.data.moduleId;
+  }
+
+  scopes(): Promise<Scope[]> {
+
+    return this.client.scopes(this.id);
+  }
+}
+
+export class RequestedVariable {
+
+  constructor(private readonly client: MiniDapClient, readonly data: RequestedVariableData) {}
+
+  get name() {
+    return this.data.name;
+  }
+
+  get value() {
+    return this.data.value;
+  }
+
+  get variablesReference() {
+    return this.data.variablesReference;
+  }
+
+  get type() {
+    return this.data.type;
+  }
+
+  get evaluateName() {
+    return this.data.evaluateName;
+  }
+  get namedVariables() {
+    return this.data.namedVariables;
+  }
+  get indexedVariables() {
+    return this.data.indexedVariables;
+  }
+  get memoryReference() {
+    return this.data.memoryReference;
+  }
+
+  variables(args: Record<string, unknown> = {}): Promise<RequestedVariable[]> {
+    assert.ok(this.variablesReference > 0, `Variable ${this.name} has no children`);
+    return this.client.variables({ ...args, variablesReference: this.variablesReference });
+  }
+}
+
+export class Scope {
+  constructor(private readonly client: MiniDapClient, readonly data: ScopeData) {}
+
+  get name() {
+    return this.data.name;
+  }
+  get variablesReference() {
+    return this.data.variablesReference;
+  }
+  get expensive() {
+    return this.data.expensive;
+  }
+  get presentationHint() {
+    return this.data.presentationHint;
+  }
+  get namedVariables() {
+    return this.data.namedVariables;
+  }
+  get indexedVariables() {
+    return this.data.indexedVariables;
+  }
+  get source() {
+    return this.data.source;
+  }
+  get line() {
+    return this.data.line;
+  }
+  get column() {
+    return this.data.column;
+  }
+
+  variables(args: Record<string, unknown> = {}): Promise<RequestedVariable[]> {
+    return this.client.variables({ ...args, variablesReference: this.variablesReference });
+  }
+}
+
 export class MiniDapClient {
   private sequence = 0;
   private readonly waiting: ProtocolMessage[] = [];
@@ -94,6 +270,34 @@ export class MiniDapClient {
     const seq = ++this.sequence;
     this.adapter.handleMessage({ seq, type: 'request', command, arguments: args });
     return this.waitFor((message) => message.type === 'response' && message.request_seq === seq) as Promise<Record<string, any>>;
+  }
+
+  async variables(args: Record<string, unknown> = {}): Promise<RequestedVariable[]> {
+    const response = await this.request('variables', args);
+    assert.strictEqual(response.success, true, response.message ?? 'DAP variables request failed');
+    assert.ok(Array.isArray(response.body?.variables), 'DAP variables response must contain a variables array');
+    return response.body.variables.map((variable: RequestedVariableData) => new RequestedVariable(this, variable));
+  }
+
+  async threads(): Promise<Thread[]> {
+    const response = await this.request('threads');
+    assert.strictEqual(response.success, true, response.message ?? 'DAP threads request failed');
+    assert.ok(Array.isArray(response.body?.threads), 'DAP threads response must contain a threads array');
+    return response.body.threads.map((thread: ThreadData) => new Thread(this, thread));
+  }
+
+  async stackTrace(threadId: number, args: { startFrame?: number; levels?: number } = {}): Promise<StackFrame[]> {
+    const response = await this.request('stackTrace', { ...args, threadId });
+    assert.strictEqual(response.success, true, response.message ?? 'DAP stackTrace request failed');
+    assert.ok(Array.isArray(response.body?.stackFrames), 'DAP stackTrace response must contain a stackFrames array');
+    return response.body.stackFrames.map((frame: StackFrameData) => new StackFrame(this, frame));
+  }
+
+  async scopes(frameId: number): Promise<Scope[]> {
+    const response = await this.request('scopes', { frameId });
+    assert.strictEqual(response.success, true, response.message ?? 'DAP scopes request failed');
+    assert.ok(Array.isArray(response.body?.scopes), 'DAP scopes response must contain a scopes array');
+    return response.body.scopes.map((scope: ScopeData) => new Scope(this, scope));
   }
 
   persistLogs() {
