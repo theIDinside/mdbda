@@ -77,6 +77,17 @@ export class MdbAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
         sessionType: configuration.sessionType === 'rr' ? 'rr' : 'ptrace',
         isChild: false,
         config: configuration,
+        shimRuns: Array.isArray(configuration.childDebuggerArgs) && typeof processConfig.shimPath === 'string'
+          ? {
+            name: configuration.name ?? 'mdb',
+            program: configuration.program,
+            args: Array.isArray(configuration.args) ? configuration.args : [],
+            cwd: configuration.cwd,
+            env: configuration.env,
+            childDebuggerArgs: configuration.childDebuggerArgs,
+            shimPath: processConfig.shimPath,
+          }
+          : undefined,
       });
     }
 

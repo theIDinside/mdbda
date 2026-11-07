@@ -6,6 +6,7 @@ export interface MdbProcessLike {
 	send(message: unknown): void;
 	kill(graceMs?: number): Promise<void>;
 	on(event: string, listener: (...args: any[]) => void): this;
+	readonly pid?: number;
 }
 
 export interface ConnectionAdapter {
@@ -72,6 +73,17 @@ export class MdbConnection {
     }
     if (this.adapters.size === 0) {
       void this.dispose();
+    }
+  }
+
+  /** The pid of the mdb process, once it has been spawned. */
+  get mdbPid(): number | undefined {
+    return this.process.pid;
+  }
+
+  unbindPid(adapter: ConnectionAdapter, pid: number): void {
+    if (this.pidAdapters.get(pid) === adapter) {
+      this.pidAdapters.delete(pid);
     }
   }
 

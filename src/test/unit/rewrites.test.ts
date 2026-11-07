@@ -49,7 +49,7 @@ suite('protocol rewrites', () => {
     assert.deepStrictEqual(sliceStackTrace({ startFrame: 3, levels: 1 }, body), { stackFrames: [], totalFrames: 3 });
   });
 
-  test('strips breakpoint conditions and logpoints while preserving forwarded line indexes', () => {
+  test('strips breakpoint conditions and forwards logpoints', () => {
     const result = rewriteSetBreakpoints({
       source: { path: '/src/main.cpp' },
       lines: [10, 11, 12],
@@ -59,14 +59,10 @@ suite('protocol rewrites', () => {
         { line: 12, hitCondition: '3' },
       ],
     });
-    assert.deepStrictEqual(result.forward.breakpoints, [{ line: 10 }, { line: 12 }]);
-    assert.deepStrictEqual(result.forward.lines, [10, 12]);
-    assert.deepStrictEqual([...result.mapping], [[0, 0], [2, 1]]);
-    assert.deepStrictEqual(result.local.get(1), {
-      verified: false,
-      line: 11,
-      message: 'Log points are not supported by mdb yet',
-    });
+    assert.deepStrictEqual(result.forward.breakpoints, [{ line: 10 }, { line: 11, logMessage: 'value {x}' }, { line: 12 }]);
+    assert.deepStrictEqual(result.forward.lines, [10, 11, 12]);
+    assert.deepStrictEqual([...result.mapping], [[0, 0], [1, 1], [2, 2]]);
+    assert.strictEqual(result.local.size, 0);
     assert.deepStrictEqual(result.warnings.map(({ message }) => message), [
       'mdb: breakpoint conditions are not supported yet; ignoring condition on /src/main.cpp:10',
       'mdb: breakpoint conditions are not supported yet; ignoring condition on /src/main.cpp:12',

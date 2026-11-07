@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Host } from '../core/host';
+import { Host, RunInTerminalOptions, TerminalRun } from '../core/host';
 import { Logger } from '../core/logger';
 import { MdbSessionAdapter } from '../core/sessionAdapter';
 import { SessionRegistry } from './sessionRegistry';
@@ -50,6 +50,32 @@ export class VsCodeHost implements Host {
     }, (error: unknown) => {
       this.showError(`Could not start fork child session ${childPid}: ${error instanceof Error ? error.message : String(error)}`);
     });
+  }
+
+  runInTerminal(options: RunInTerminalOptions): TerminalRun {
+    const terminal = vscode.window.createTerminal({
+      name: options.name,
+      shellPath: options.program,
+      shellArgs: options.args,
+      cwd: options.cwd,
+      env: options.env,
+    });
+    terminal.show(true);
+    const listeners: Array<(exitCode: number | undefined) => void> = [];
+    // VS Code disposes a terminal whose process exited, and closing the terminal kills the process.
+    const subscription = vscode.window.onDidCloseTerminal((closed) => {
+      if (closed !== terminal) {
+        return;
+      }
+      subscription.dispose();
+      for (const listener of listeners.splice(0)) {
+        listener(terminal.exitStatus?.code);
+      }
+    });
+    return {
+      onExit: (listener) => { listeners.push(listener); },
+      kill: () => terminal.dispose(),
+    };
   }
 
   showError(message: string): void {

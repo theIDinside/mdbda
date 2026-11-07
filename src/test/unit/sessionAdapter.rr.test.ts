@@ -29,6 +29,7 @@ const host: Host = {
   trace: false,
   showError: () => undefined,
   startChildSession: () => undefined,
+  runInTerminal: () => { throw new Error('runInTerminal is not used by this test'); },
 };
 
 suite('rr session adapter', () => {

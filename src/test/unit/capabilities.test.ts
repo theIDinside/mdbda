@@ -20,7 +20,7 @@ suite('patchCapabilities', () => {
 
     assert.strictEqual(patched.supportsConditionalBreakpoints, false);
     assert.strictEqual(patched.supportsHitConditionalBreakpoints, false);
-    assert.strictEqual(patched.supportsLogPoints, false);
+    assert.strictEqual(patched.supportsLogPoints, true);
     assert.strictEqual(patched.supportsTerminateThreadsRequest, false);
     assert.strictEqual(patched.supportsStepBack, false);
     assert.deepStrictEqual(patched.exceptionBreakpointFilters, []);

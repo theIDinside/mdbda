@@ -29,6 +29,7 @@ export function createMiniDapSession(
     trace: false,
     showError: (message) => { throw new Error(message); },
     startChildSession: () => undefined,
+    runInTerminal: () => { throw new Error('runInTerminal is not used by this test'); },
   }, {
     sessionType: 'ptrace',
     isChild: false,
