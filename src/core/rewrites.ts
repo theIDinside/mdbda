@@ -77,14 +77,6 @@ export function rewriteSetBreakpoints(args: AnyRecord): SetBreakpointsResult {
       delete breakpoint.condition;
       delete breakpoint.hitCondition;
     }
-    if (breakpoint.logMessage !== undefined) {
-      local.set(requestedIndex, {
-        verified: false,
-        line: requestedLine,
-        message: 'Log points are not supported by mdb yet',
-      });
-      return;
-    }
     mapping.set(requestedIndex, forwardBreakpoints.length);
     forwardBreakpoints.push(breakpoint);
   });
