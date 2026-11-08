@@ -50,6 +50,7 @@ suite('mdb fork integration', () => {
         sessionType: 'ptrace',
         isChild: true,
         childPid,
+        root: parentAdapter,
         config: { name: `fork [fork ${childPid}]`, request: 'attach', processId: childPid },
       });
       childClient = new MiniDapClient(childAdapter, log);

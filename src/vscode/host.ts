@@ -22,27 +22,30 @@ export class VsCodeHost implements Host {
     };
   }
 
+  /**
+   * Fork children are top-level sessions, siblings of the root, so the Call Stack lists every process at one level
+   * instead of nesting forks of forks. VS Code only manages the lifecycle and console of nested sessions, so the
+   * root adapter does that instead: it funnels the children's output into its console and stops them with it.
+   */
   startChildSession(parent: MdbSessionAdapter, childPid: number, name: string): void {
-    const parentRecord = [...this.registry.values()].find((record) => record.adapter === parent);
-    if (!parentRecord) {
+    const records = [...this.registry.values()];
+    const parentRecord = records.find((record) => record.adapter === parent);
+    const rootRecord = records.find((record) => record.adapter === (parent.root ?? parent));
+    if (!parentRecord || !rootRecord) {
       this.logger.warn(`Cannot start fork child ${childPid}: parent debug session is no longer registered`);
       return;
     }
     void vscode.debug.startDebugging(
-      parentRecord.session.workspaceFolder,
+      rootRecord.session.workspaceFolder,
       {
         type: 'mdb',
         request: 'attach',
         name,
         processId: childPid,
         __mdbChildOf: parentRecord.session.id,
+        __mdbRoot: rootRecord.session.id,
       },
-      {
-        parentSession: parentRecord.session,
-        lifecycleManagedByParent: true,
-        consoleMode: vscode.DebugConsoleMode.MergeWithParent,
-        compact: true,
-      },
+      { suppressSaveBeforeStart: true },
     ).then((started) => {
       if (!started) {
         this.logger.warn(`VS Code declined to start fork child session ${childPid}`);

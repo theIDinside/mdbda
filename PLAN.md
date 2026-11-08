@@ -155,7 +155,7 @@ VS Code session (fork2) ──┘   (mux / demux)    └── stdout ◀─ (st
   everything is pass-through with rewrites, and a raw-message proxy is simpler. Only add `@vscode/debugprotocol` as a
   dependency, for its types.
 - **One mdb process per root session tree**, not one global singleton like Midas. A root `launch` spawns its own mdb.
-  Fork children find their parent's `MdbConnection` through the parent `vscode.DebugSession`, keyed by `session.id`, in
+  Fork children find the root's `MdbConnection` through the root `vscode.DebugSession`, keyed by `session.id`, in
   a registry. If one mdb crashes, it only kills its own tree.
 - **Keep the core independent of VS Code.** `framing.ts`, `connection.ts`, `sessionAdapter.ts` and `rewrites.ts` must not
   import `vscode`. They depend on a small `Host` interface instead:
@@ -256,10 +256,16 @@ src/
 Also provide `initialConfigurations` and `configurationSnippets` for "mdb: Launch" and "mdb: Replay rr trace".
 
 `request: "attach"` is **internal only**, used for fork children. `startDebugging` is called with
-`{type:"mdb", request:"attach", name:"<parent name> [fork <pid>]", __mdbChildOf:<parentSessionId>, processId:<pid>}`.
+`{type:"mdb", request:"attach", name:"<root name> [fork <pid>]", __mdbChildOf:<forkingSessionId>, __mdbRoot:<rootSessionId>, processId:<pid>}`.
 - In `resolveDebugConfiguration`, reject any `attach` that lacks `__mdbChildOf`, with the message "Attaching to an
   arbitrary process is not supported by mdb yet."
-- Options: `{parentSession, lifecycleManagedByParent:true, consoleMode:MergeWithParent, compact:true}`.
+- No `parentSession`: every fork child, including forks of forks, is a top-level sibling of the root in the Call Stack.
+  VS Code only merges consoles and manages lifecycles for nested sessions, so the root adapter does it instead:
+  - children's `output` events are emitted by the root, so all output lands in the root's debug console;
+  - when the user stops the root (`terminate`, or `disconnect` before mdb sent `terminated`), it first stops every
+    child (mdb `disconnect` + SIGKILL), then forwards its own request;
+  - when the root's process exits while children still run, the root holds back `terminated` (answering `threads`
+    with `[]`) until its last child ends.
 
 ### 3.3 `launch` request rewrite
 
