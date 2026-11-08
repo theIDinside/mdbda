@@ -84,6 +84,11 @@ export class MdbSessionAdapter implements ConnectionAdapter {
   private awaitingShim = false;
   /** Set while attaching; VS Code's requests wait until the attach has finished. */
   private deferredRequests: Request[] | undefined;
+  /**
+   * Set while a launch or attach is in flight. VS Code doesn't wait for its response before sending breakpoints,
+   * and until then this.pid is only a placeholder that mdb can't route, so requests wait here until it's bound.
+   */
+  private awaitingPid: Request[] | undefined;
   private runPid: number | undefined;
   private initializedForwarded = false;
   private shutDown = false;
@@ -118,6 +123,14 @@ export class MdbSessionAdapter implements ConnectionAdapter {
     }
     const request = message as Request;
     this.trace('vscode→', request);
+    if (this.awaitingPid) {
+      this.awaitingPid.push(request);
+      return;
+    }
+    this.dispatch(request);
+  }
+
+  private dispatch(request: Request): void {
     void this.handleRequest(request).catch((error: unknown) => {
       this.host.showError(`Failed to handle ${request.command}: ${errorMessage(error)}`);
       this.emitMessage({
@@ -196,6 +209,13 @@ export class MdbSessionAdapter implements ConnectionAdapter {
     this.emitMessage({ ...rewritten, seq: ++this.outSeq });
     if (rewrite?.originalCommand === 'continueAll' && response.success) {
       this.emitEvent('continued', { allThreadsContinued: true });
+    }
+    if (this.awaitingPid && (response.command === 'launch' || response.command === 'attach')) {
+      const waiting = this.awaitingPid;
+      this.awaitingPid = undefined;
+      for (const request of waiting) {
+        this.dispatch(request);
+      }
     }
   }
 
@@ -326,6 +346,9 @@ export class MdbSessionAdapter implements ConnectionAdapter {
       this.pendingRewrites.set(request.seq, rewrite);
     }
     const forwarded = this.connection.forward(this, wireRequest, processId);
+    if (forwarded && (command === 'launch' || command === 'attach') && this.pid === this.placeholderPid) {
+      this.awaitingPid = [];
+    }
     if (forwarded && !this.isChild && (command === 'disconnect' || command === 'terminate')) {
       this.connection.expectShutdown();
     }

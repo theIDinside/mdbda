@@ -16,48 +16,95 @@ const forkSubject = testConfig.testSubject('fork');
 const childSubject = testConfig.testSubject('childprogram');
 const forkSource = testConfig.file('test/fork.cpp');
 
+/**
+ * Launches the fork subject and drives the session started for its child with `driveChild`, then waits for both
+ * processes to exit and their sessions to terminate.
+ */
+async function runForkSessions(driveChild: (client: MiniDapClient) => Promise<void>): Promise<void> {
+  const mdbPath = testConfig.mdbPath;
+  const log = new Log(testConfig);
+  const process = new MdbProcess({ path: mdbPath, args: [], logDirectory: log.directory() });
+  const errors: string[] = [];
+  let connection!: MdbConnection;
+  let childAdapter: MdbSessionAdapter | undefined;
+  let childClient: MiniDapClient | undefined;
+  let childSequence: Promise<void> | undefined;
+  let onProcess!: () => void;
+  const processSeen = new Promise<void>((resolve) => { onProcess = resolve; });
+  let startChildSession: Host['startChildSession'] = () => undefined;
+  const host: Host = {
+    logger: nullLogger,
+    trace: false,
+    showError: (message) => { errors.push(message); },
+    startChildSession: (parent, pid, name) => startChildSession(parent, pid, name),
+    runInTerminal: () => { throw new Error('runInTerminal is not used by this test'); },
+  };
+  connection = new MdbConnection(process, log.directory());
+  const parentAdapter = new MdbSessionAdapter(connection, host, {
+    sessionType: 'ptrace',
+    isChild: false,
+    config: { name: 'fork', sessionType: 'ptrace', program: forkSubject, args: [childSubject] },
+  });
+  const parentClient = new MiniDapClient(parentAdapter, log);
+
+  startChildSession = (_parent, childPid) => {
+    onProcess();
+    childAdapter = new MdbSessionAdapter(connection, host, {
+      sessionType: 'ptrace',
+      isChild: true,
+      childPid,
+      root: parentAdapter,
+      config: { name: `fork [fork ${childPid}]`, request: 'attach', processId: childPid },
+    });
+    childClient = new MiniDapClient(childAdapter, log);
+    childSequence = driveChild(childClient);
+  };
+
+  try {
+    await parentClient.initialize();
+    const launched = await parentClient.request('launch', { program: forkSubject, args: [childSubject] });
+    assert.strictEqual(launched.success, true);
+    const configured = await parentClient.request('configurationDone');
+    assert.strictEqual(configured.success, true);
+
+    let processTimer: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        processSeen,
+        new Promise<void>((_resolve, reject) => {
+          processTimer = setTimeout(() => reject(new Error('no fork process event from mdb')), 15000);
+        }),
+      ]);
+    } finally {
+      if (processTimer) {
+        clearTimeout(processTimer);
+      }
+    }
+    assert.ok(childSequence, 'the fork event should start the child attach sequence');
+    await childSequence;
+    assert.ok(childAdapter && childClient, 'the fork event should create its own child session');
+
+    await parentClient.waitFor((message) => message.type === 'event' && message.event === 'exited');
+    await parentClient.waitFor((message) => message.type === 'event' && message.event === 'terminated');
+    await childClient!.waitFor((message) => message.type === 'event' && message.event === 'exited');
+    await childClient!.waitFor((message) => message.type === 'event' && message.event === 'terminated');
+    assert.deepStrictEqual(errors, []);
+  } finally {
+    childAdapter?.dispose();
+    parentAdapter.dispose();
+    await process.kill(100);
+    log.dispose();
+  }
+}
+
+async function continueFrom(client: MiniDapClient, stopped: Record<string, any>): Promise<void> {
+  const resumed = await client.request('continue', { threadId: stopped.body.threadId });
+  assert.strictEqual(resumed.success, true);
+}
+
 suite('mdb fork integration', () => {
   test('attaches each fork child and completes both session lifecycles', async function () {
-    const mdbPath = testConfig.mdbPath;
-    const log = new Log(testConfig);
-    const process = new MdbProcess({ path: mdbPath, args: [], logDirectory: log.directory() });
-    const errors: string[] = [];
-    let connection!: MdbConnection;
-    let childAdapter: MdbSessionAdapter | undefined;
-    let childClient: MiniDapClient | undefined;
-    let childSequence: Promise<void> | undefined;
-    let onProcess!: () => void;
-    const processSeen = new Promise<void>((resolve) => { onProcess = resolve; });
-    let startChildSession: Host['startChildSession'] = () => undefined;
-    const host: Host = {
-      logger: nullLogger,
-      trace: false,
-      showError: (message) => { errors.push(message); },
-      startChildSession: (parent, pid, name) => startChildSession(parent, pid, name),
-      runInTerminal: () => { throw new Error('runInTerminal is not used by this test'); },
-    };
-    connection = new MdbConnection(process, log.directory());
-    const parentAdapter = new MdbSessionAdapter(connection, host, {
-      sessionType: 'ptrace',
-      isChild: false,
-      config: { name: 'fork', sessionType: 'ptrace', program: forkSubject, args: [childSubject] },
-    });
-    const parentClient = new MiniDapClient(parentAdapter, log);
-
-    startChildSession = (_parent, childPid) => {
-      onProcess();
-      childAdapter = new MdbSessionAdapter(connection, host, {
-        sessionType: 'ptrace',
-        isChild: true,
-        childPid,
-        root: parentAdapter,
-        config: { name: `fork [fork ${childPid}]`, request: 'attach', processId: childPid },
-      });
-      childClient = new MiniDapClient(childAdapter, log);
-      childSequence = driveChild(childClient);
-    };
-
-    async function driveChild(client: MiniDapClient): Promise<void> {
+    await runForkSessions(async (client) => {
       await client.initialize();
       const attached = await client.request('attach', { processId: 0 });
       assert.strictEqual(attached.success, true);
@@ -71,44 +118,33 @@ suite('mdb fork integration', () => {
       // mdb stops every exec'd process at main (SupervisorState::HandleExec), so the child has to be resumed
       // for it, and the parent waiting on it, to exit.
       const stopped = await client.waitFor((message) => message.type === 'event' && message.event === 'stopped');
-      const resumed = await client.request('continue', { threadId: (stopped as Record<string, any>).body.threadId });
-      assert.strictEqual(resumed.success, true);
-    }
+      await continueFrom(client, stopped as Record<string, any>);
+    });
+  });
 
-    try {
-      await parentClient.initialize();
-      const launched = await parentClient.request('launch', { program: forkSubject, args: [childSubject] });
-      assert.strictEqual(launched.success, true);
-      const configured = await parentClient.request('configurationDone');
+  test('hits a child breakpoint set before the attach response arrived', async function () {
+    await runForkSessions(async (client) => {
+      await client.initialize();
+      // Like VS Code: configure on the initialized event without waiting for the attach response.
+      const [attached, breakpoints, configured] = await Promise.all([
+        client.request('attach', { processId: 0 }),
+        client.request('setBreakpoints', {
+          source: { name: path.basename(forkSource), path: forkSource },
+          // `std::cout << "Child process: ..."`, which only the child runs, between fork and exec.
+          breakpoints: [{ line: 26 }],
+        }),
+        client.request('configurationDone'),
+      ]);
+      assert.strictEqual(attached.success, true);
+      assert.strictEqual(breakpoints.success, true);
+      assert.strictEqual(breakpoints.body.breakpoints[0].verified, true, JSON.stringify(breakpoints.body));
       assert.strictEqual(configured.success, true);
 
-      let processTimer: NodeJS.Timeout | undefined;
-      try {
-        await Promise.race([
-          processSeen,
-          new Promise<void>((_resolve, reject) => {
-            processTimer = setTimeout(() => reject(new Error('no fork process event from mdb')), 15000);
-          }),
-        ]);
-      } finally {
-        if (processTimer) {
-          clearTimeout(processTimer);
-        }
-      }
-      assert.ok(childSequence, 'the fork event should start the child attach sequence');
-      await childSequence;
-      assert.ok(childAdapter && childClient, 'the fork event should create its own child session');
-
-      await parentClient.waitFor((message) => message.type === 'event' && message.event === 'exited');
-      await parentClient.waitFor((message) => message.type === 'event' && message.event === 'terminated');
-      await childClient!.waitFor((message) => message.type === 'event' && message.event === 'exited');
-      await childClient!.waitFor((message) => message.type === 'event' && message.event === 'terminated');
-      assert.deepStrictEqual(errors, []);
-    } finally {
-      childAdapter?.dispose();
-      parentAdapter.dispose();
-      await process.kill(100);
-      log.dispose();
-    }
+      const hit = await client.waitFor((message) => message.type === 'event' && message.event === 'stopped') as Record<string, any>;
+      assert.strictEqual(hit.body.reason, 'breakpoint');
+      await continueFrom(client, hit);
+      const atMain = await client.waitFor((message) => message.type === 'event' && message.event === 'stopped');
+      await continueFrom(client, atMain as Record<string, any>);
+    });
   });
 });
