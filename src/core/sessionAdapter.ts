@@ -37,6 +37,11 @@ export interface SessionAdapterOptions {
 	sessionType: SessionType;
 	isChild: boolean;
 	childPid?: number;
+	/**
+	 * The session the user launched. Fork children (and their forks) are siblings of it in VS Code, so it owns the
+	 * group: their output goes to its debug console, and stopping it stops them.
+	 */
+	root?: MdbSessionAdapter;
 	config: Record<string, any>;
 	/** Run a command and attach to each process it starts through mdb_shim, one at a time. */
 	shimRuns?: Omit<ShimRunsOptions, 'mdbPid'>;
@@ -59,6 +64,7 @@ export class MdbSessionAdapter implements ConnectionAdapter {
   readonly sessionType: SessionType;
   readonly isChild: boolean;
   readonly childPid?: number;
+  readonly root?: MdbSessionAdapter;
   readonly config: Record<string, any>;
   readonly processes: number[] = [];
   readonly listeners = new Set<(message: ProtocolMessage) => void>();
@@ -81,6 +87,12 @@ export class MdbSessionAdapter implements ConnectionAdapter {
   private runPid: number | undefined;
   private initializedForwarded = false;
   private shutDown = false;
+  /** Root only: the sessions started for forks of its process tree. */
+  private readonly children = new Set<MdbSessionAdapter>();
+  /** Root only: its process has exited, but it stays alive in VS Code until its children have ended. */
+  private processExited = false;
+  /** Child only: its process has been stopped, so a later disconnect has nothing left to do. */
+  private stopped = false;
 
   constructor(
 		private readonly connection: MdbConnection,
@@ -90,6 +102,8 @@ export class MdbSessionAdapter implements ConnectionAdapter {
     this.sessionType = opts.sessionType;
     this.isChild = opts.isChild;
     this.childPid = opts.childPid;
+    this.root = opts.root;
+    this.root?.children.add(this);
     this.config = opts.config;
     this.shimOptions = opts.shimRuns;
     this.awaitingShim = opts.shimRuns !== undefined;
@@ -126,6 +140,7 @@ export class MdbSessionAdapter implements ConnectionAdapter {
     void this.shimRuns?.dispose();
     this.connection.unregister(this);
     this.listeners.clear();
+    this.root?.childEnded(this);
   }
 
   selectProcess(pid: number): void {
@@ -192,13 +207,13 @@ export class MdbSessionAdapter implements ConnectionAdapter {
       }
       event = shimEvent;
     }
-    if (event.event === 'terminated') {
-      this.hasTerminated = true;
+    if (event.event === 'terminated' && this.deferTermination(event)) {
+      return;
     }
     if (event.event === 'process') {
       const childPid = Number(event.body?.processId);
       if (Number.isFinite(childPid)) {
-        this.host.startChildSession(this, childPid, `${this.baseName()} [fork ${childPid}]`);
+        this.host.startChildSession(this, childPid, `${(this.root ?? this).baseName()} [fork ${childPid}]`);
       }
       return;
     }
@@ -222,6 +237,26 @@ export class MdbSessionAdapter implements ConnectionAdapter {
     }
     if (!FORWARDED_REQUESTS.has(command) && !CUSTOM_COMMANDS.includes(command as typeof CUSTOM_COMMANDS[number])) {
       this.emitMessage({ ...blockedResponse(request), seq: ++this.outSeq });
+      return;
+    }
+    if (!this.isChild && (command === 'disconnect' || command === 'terminate') && !this.hasTerminated &&
+        this.children.size > 0) {
+      // The user stopped the root, not mdb ending it (VS Code disconnects after a terminated event), so stop
+      // every process it forked too. If the root's own process has exited, ending the last child terminates it.
+      await this.stopChildren();
+    }
+    if (this.processExited) {
+      if (command === 'threads') {
+        this.respond(request, { threads: [] });
+      } else if (command === 'disconnect' || command === 'terminate') {
+        this.connection.expectShutdown();
+        this.respond(request);
+      } else {
+        this.emitMessage({
+          seq: ++this.outSeq, type: 'response', request_seq: request.seq, command, success: false,
+          message: `Process ${this.pid} has exited`,
+        });
+      }
       return;
     }
     if (this.shimOptions && await this.handleShimRunRequest(request)) {
@@ -488,22 +523,83 @@ export class MdbSessionAdapter implements ConnectionAdapter {
     });
   }
 
+  /**
+   * Root only: the root's process ended while forked processes still run. Keep the root session, which owns the
+   * debug console, until they have ended too. Returns true if the terminated event was held back.
+   */
+  private deferTermination(event: Event): boolean {
+    if (this.isChild || this.processExited || event.processId === undefined || event.processId !== this.pid ||
+        this.children.size === 0) {
+      return false;
+    }
+    this.processExited = true;
+    const count = this.children.size;
+    this.emitEvent('output', {
+      category: 'console',
+      output: `Process ${this.pid} exited; waiting for ${count} forked process${count === 1 ? '' : 'es'}\n`,
+    });
+    this.emitEvent('invalidated', { areas: ['threads'] });
+    return true;
+  }
+
+  private childEnded(child: MdbSessionAdapter): void {
+    if (!this.children.delete(child)) {
+      return;
+    }
+    if (this.processExited && this.children.size === 0 && !this.hasTerminated) {
+      this.emitEvent('terminated');
+    }
+  }
+
+  private async stopChildren(): Promise<void> {
+    await Promise.all([...this.children].map((child) => child.stop()));
+  }
+
+  /** Child only: stops its process on behalf of the root and ends the session. */
+  private async stop(): Promise<void> {
+    if (this.hasTerminated || this.stopped) {
+      return;
+    }
+    this.stopped = true;
+    if (!this.connection.closed) {
+      try {
+        await this.killChildProcess();
+      } catch (error) {
+        this.host.showError(`Failed to stop child process ${this.childPid ?? this.pid}: ${errorMessage(error)}`);
+      }
+    }
+    this.emitEvent('terminated');
+  }
+
+  /** Detaches mdb from the child process, then kills it. */
+  private async killChildProcess(): Promise<void> {
+    const childPid = this.childPid ?? this.pid;
+    const response = await this.connection.request(this, 'disconnect', { terminateDebuggee: false }, childPid);
+    if (!response.success) {
+      throw new Error(response.message ?? 'disconnect failed');
+    }
+    try {
+      this.connection.killTracee(childPid, 'SIGKILL');
+    } catch (error) {
+      if (!isErrno(error, 'ESRCH')) {
+        throw error;
+      }
+    }
+  }
+
   private async stopChild(request: Request): Promise<void> {
     const childPid = this.childPid ?? this.pid;
+    if (this.stopped || this.connection.closed) {
+      this.respond(request);
+      if (!this.hasTerminated) {
+        this.emitEvent('terminated');
+      }
+      return;
+    }
     try {
-      const response = await this.connection.request(this, 'disconnect', { terminateDebuggee: false }, childPid);
-      if (!response.success) {
-        this.emitMessage({ ...response, command: request.command, request_seq: request.seq, seq: ++this.outSeq });
-        return;
-      }
-      try {
-        this.connection.killTracee(childPid, 'SIGKILL');
-      } catch (error) {
-        if (!isErrno(error, 'ESRCH')) {
-          throw error;
-        }
-      }
-      this.emitMessage({ seq: ++this.outSeq, type: 'response', request_seq: request.seq, command: request.command, success: true });
+      await this.killChildProcess();
+      this.stopped = true;
+      this.respond(request);
       this.emitEvent('terminated');
     } catch (error) {
       this.host.showError(`Failed to stop child process ${childPid}: ${errorMessage(error)}`);
@@ -531,16 +627,25 @@ export class MdbSessionAdapter implements ConnectionAdapter {
   }
 
   private emitEvent(event: string, body?: Record<string, unknown>): void {
-    if (event === 'terminated') {
-      this.hasTerminated = true;
-    }
     this.emitMessage({ seq: ++this.outSeq, type: 'event', event, ...(body ? { body } : {}) });
   }
 
   private emitMessage(message: ProtocolMessage): void {
+    const event = message.type === 'event' ? (message as Event).event : undefined;
+    if (event === 'output' && this.root && !this.root.disposed) {
+      // All output goes to the root's debug console.
+      this.root.emitMessage({ ...message, seq: ++this.root.outSeq });
+      return;
+    }
+    if (event === 'terminated') {
+      this.hasTerminated = true;
+    }
     this.trace('→vscode', message);
     for (const listener of [...this.listeners]) {
       listener(message);
+    }
+    if (event === 'terminated') {
+      this.root?.childEnded(this);
     }
   }
 

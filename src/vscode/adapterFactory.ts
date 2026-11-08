@@ -15,9 +15,18 @@ export class MdbAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
     context.subscriptions.push(
       vscode.debug.onDidTerminateDebugSession((session) => {
         const record = this.registry.get(session.id);
-        if (record) {
-          this.registry.delete(session.id);
-          record.adapter.dispose();
+        if (!record) {
+          return;
+        }
+        this.registry.delete(session.id);
+        record.adapter.dispose();
+        if (!record.adapter.root) {
+          // The root adapter stops its children itself; this catches any VS Code still shows after it is gone.
+          for (const child of this.registry.values()) {
+            if (child.adapter.root === record.adapter) {
+              void vscode.debug.stopDebugging(child.session);
+            }
+          }
         }
       }),
       vscode.debug.onDidChangeActiveDebugSession((session) => {
@@ -40,16 +49,17 @@ export class MdbAdapterFactory implements vscode.DebugAdapterDescriptorFactory {
     let connection: MdbConnection;
     let adapter: MdbSessionAdapter;
     if (configuration.request === 'attach') {
-      const parentId = configuration.__mdbChildOf;
-      const parent = typeof parentId === 'string' ? this.registry.get(parentId) : undefined;
-      if (!parent) {
-        throw new Error(`Cannot attach fork child: parent debug session ${String(parentId)} is no longer active.`);
+      const rootId = configuration.__mdbRoot;
+      const root = typeof rootId === 'string' ? this.registry.get(rootId) : undefined;
+      if (!root) {
+        throw new Error(`Cannot attach fork child: root debug session ${String(rootId)} is no longer active.`);
       }
-      connection = parent.connection;
+      connection = root.connection;
       adapter = new MdbSessionAdapter(connection, this.host, {
         sessionType: 'ptrace',
         isChild: true,
         childPid: Number(configuration.processId),
+        root: root.adapter,
         config: configuration,
       });
     } else {

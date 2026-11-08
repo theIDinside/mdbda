@@ -203,4 +203,74 @@ suite('MdbConnection and MdbSessionAdapter', () => {
     assert.strictEqual(messages[0].command, 'terminate');
     assert.strictEqual(messages[1].event, 'terminated');
   });
+
+  suite('fork children', () => {
+    function createTree() {
+      const process = new FakeMdbProcess();
+      const killed: Array<[number, NodeJS.Signals]> = [];
+      const connection = new MdbConnection(process, '/tmp/mdb-logs', nullLogger, (pid, signal) => killed.push([pid, signal]));
+      const root = createAdapter(connection);
+      const rootMessages = collect(root);
+      root.handleMessage({ seq: 1, type: 'request', command: 'launch', arguments: {} });
+      process.respond(process.sent[0], { processId: 100 });
+      const child = createAdapter(connection, createHost(), { isChild: true, childPid: 200, root });
+      const childMessages = collect(child);
+      child.handleMessage({ seq: 1, type: 'request', command: 'attach', arguments: {} });
+      process.respond(process.sent[1]);
+      process.sent.length = 0;
+      rootMessages.length = 0;
+      childMessages.length = 0;
+      const event = (pid: number, name: string, body?: Record<string, unknown>) =>
+        process.emit('message', { seq: 0, type: 'event', event: name, processId: pid, ...(body ? { body } : {}) });
+      return { process, killed, root, rootMessages, child, childMessages, event };
+    }
+
+    test('sends child output to the root session', () => {
+      const { rootMessages, childMessages, event } = createTree();
+      event(200, 'output', { category: 'stdout', output: 'hello\n' });
+      assert.deepStrictEqual(childMessages, []);
+      assert.strictEqual(rootMessages.length, 1);
+      assert.strictEqual(rootMessages[0].event, 'output');
+      assert.strictEqual(rootMessages[0].body.output, 'hello\n');
+    });
+
+    test('keeps the root session until its children have ended', () => {
+      const { process, rootMessages, childMessages, root, event } = createTree();
+      event(100, 'terminated');
+      assert.ok(!rootMessages.some((message) => message.event === 'terminated'));
+      assert.ok(rootMessages.some((message) => message.event === 'invalidated'));
+      root.handleMessage({ seq: 2, type: 'request', command: 'threads' });
+      assert.deepStrictEqual(process.sent, []);
+      assert.deepStrictEqual(rootMessages[rootMessages.length - 1].body, { threads: [] });
+      event(200, 'terminated');
+      assert.strictEqual(childMessages[childMessages.length - 1].event, 'terminated');
+      assert.strictEqual(rootMessages[rootMessages.length - 1].event, 'terminated');
+    });
+
+    test('stops the children before stopping the root', async () => {
+      const { process, killed, root, rootMessages, childMessages } = createTree();
+      root.handleMessage({ seq: 2, type: 'request', command: 'terminate' });
+      assert.strictEqual(process.sent.length, 1);
+      assert.strictEqual(process.sent[0].command, 'disconnect');
+      assert.strictEqual(process.sent[0].processId, 200);
+      process.respond(process.sent[0]);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.deepStrictEqual(killed, [[200, 'SIGKILL']]);
+      assert.strictEqual(childMessages[childMessages.length - 1].event, 'terminated');
+      assert.strictEqual(process.sent[1].command, 'terminate');
+      assert.strictEqual(process.sent[1].processId, 100);
+      process.respond(process.sent[1]);
+      assert.strictEqual(rootMessages[rootMessages.length - 1].command, 'terminate');
+    });
+
+    test('stopping a root whose process exited stops the children and ends the root', async () => {
+      const { process, root, rootMessages, event } = createTree();
+      event(100, 'terminated');
+      root.handleMessage({ seq: 2, type: 'request', command: 'terminate' });
+      process.respond(process.sent[0]);
+      await new Promise<void>((resolve) => setImmediate(resolve));
+      assert.strictEqual(process.sent.length, 1);
+      assert.deepStrictEqual(rootMessages.slice(-2).map((message) => message.event ?? message.command), ['terminated', 'terminate']);
+    });
+  });
 });

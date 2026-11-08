@@ -81,6 +81,11 @@ export class MdbConnection {
     return this.process.pid;
   }
 
+  /** True once mdb has exited or the connection has been disposed; requests fail without reaching mdb. */
+  get closed(): boolean {
+    return this.disposed;
+  }
+
   unbindPid(adapter: ConnectionAdapter, pid: number): void {
     if (this.pidAdapters.get(pid) === adapter) {
       this.pidAdapters.delete(pid);
