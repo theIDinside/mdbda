@@ -58,30 +58,88 @@ export class VsCodeHost implements Host {
   runInTerminal(options: RunInTerminalOptions): TerminalRun {
     const terminal = vscode.window.createTerminal({
       name: options.name,
-      shellPath: options.program,
-      shellArgs: options.args,
       cwd: options.cwd,
       env: options.env,
     });
     terminal.show(true);
     const listeners: Array<(exitCode: number | undefined) => void> = [];
-    // VS Code disposes a terminal whose process exited, and closing the terminal kills the process.
+    let finished = false;
+    let finalExitCode: number | undefined;
+    let execution: vscode.TerminalShellExecution | undefined;
+    let fallbackTimer: ReturnType<typeof setTimeout> | undefined;
+    const notifyExit = (code: number | undefined): void => {
+      if (finished) {
+        return;
+      }
+      finished = true;
+      finalExitCode = code;
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+      }
+      for (const listener of listeners.splice(0)) {
+        listener(code);
+      }
+    };
+    const startCommand = (shellIntegration: vscode.TerminalShellIntegration): void => {
+      if (execution || finished) {
+        return;
+      }
+      if (fallbackTimer) {
+        clearTimeout(fallbackTimer);
+        fallbackTimer = undefined;
+      }
+      execution = shellIntegration.executeCommand(options.program, options.args);
+    };
+    const integrationSubscription = vscode.window.onDidChangeTerminalShellIntegration((event) => {
+      if (event.terminal === terminal) {
+        startCommand(event.shellIntegration);
+      }
+    });
+    const executionSubscription = vscode.window.onDidEndTerminalShellExecution((event) => {
+      if (event.execution === execution) {
+        notifyExit(event.exitCode);
+      }
+    });
+    if (terminal.shellIntegration) {
+      startCommand(terminal.shellIntegration);
+    } else {
+      // Without shell integration VS Code cannot report command completion, but the
+      // shell still stays open after the command returns.
+      fallbackTimer = setTimeout(() => {
+        integrationSubscription.dispose();
+        terminal.sendText([options.program, ...options.args].map(quoteForShell).join(' '));
+      }, 3000);
+    }
     const subscription = vscode.window.onDidCloseTerminal((closed) => {
       if (closed !== terminal) {
         return;
       }
       subscription.dispose();
-      for (const listener of listeners.splice(0)) {
-        listener(terminal.exitStatus?.code);
-      }
+      integrationSubscription.dispose();
+      executionSubscription.dispose();
+      notifyExit(terminal.exitStatus?.code);
     });
     return {
-      onExit: (listener) => { listeners.push(listener); },
-      kill: () => terminal.dispose(),
+      onExit: (listener) => {
+        if (finished) {
+          listener(finalExitCode);
+        } else {
+          listeners.push(listener);
+        }
+      },
+      // Interrupt the command while leaving the integrated shell open.
+      kill: () => terminal.sendText('\u0003', false),
     };
   }
 
   showError(message: string): void {
     void vscode.window.showErrorMessage(message);
   }
+}
+
+function quoteForShell(value: string): string {
+  if (process.platform === 'win32') {
+    return `'${value.replace(/'/g, "''")}'`;
+  }
+  return `'${value.replace(/'/g, "'\\''")}'`;
 }
