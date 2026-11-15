@@ -4,6 +4,7 @@ import { MdbAdapterFactory } from './vscode/adapterFactory';
 import { MdbConfigurationProvider } from './vscode/configProvider';
 import { registerCommands } from './vscode/commands';
 import { VsCodeHost } from './vscode/host';
+import { ProcessPanel } from './vscode/processPanel';
 import { SessionRegistry } from './vscode/sessionRegistry';
 
 export function activate(context: vscode.ExtensionContext): void {
@@ -16,6 +17,7 @@ export function activate(context: vscode.ExtensionContext): void {
   );
   const adapterFactory = new MdbAdapterFactory(context, host, registry);
   registerCommands(context, registry);
+  new ProcessPanel(context, registry);
 
   context.subscriptions.push(
     output,

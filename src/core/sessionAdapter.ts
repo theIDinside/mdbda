@@ -161,6 +161,23 @@ export class MdbSessionAdapter implements ConnectionAdapter {
     this.emitEvent('invalidated', { areas: ['all'] });
   }
 
+  /** True once mdb has told us the pid of the process this session debugs. */
+  get isAttached(): boolean {
+    return this.pid !== this.placeholderPid;
+  }
+
+  /**
+   * Continues this session's process on behalf of the Processes panel. mdb doesn't send `continued` for a continue
+   * request, and VS Code only assumes one for continues it sent itself, so tell VS Code here.
+   */
+  async continueProcess(threadId: number = this.pid): Promise<void> {
+    const response = await this.connection.request(this, 'continue', { threadId }, this.pid);
+    if (!response.success) {
+      throw new Error(response.message ?? 'continue failed');
+    }
+    this.emitEvent('continued', { threadId, allThreadsContinued: true });
+  }
+
   onConnectionResponse(response: Response): void {
     const { processId: _mdbProcessId, ...responseWithoutProcessId } = response as Response & { processId?: number };
     const rewrite = this.pendingRewrites.get(response.request_seq);

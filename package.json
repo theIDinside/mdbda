@@ -90,6 +90,13 @@
                 "type": "object",
                 "description": "Environment variables for the program. mdb currently ignores env."
               },
+              "childDebuggerArgs": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                },
+                "description": "Run program as a command (such as a test harness) that starts the process to debug through mdb_shim, and append these arguments to it. {shimPath} is replaced with the mdb_shim path and {shimArgs} with its arguments as one shell-quoted string. Each process the command starts is attached to in turn by the same mdb."
+              },
               "mdbPath": {
                 "type": "string",
                 "description": "Optional path or executable name for mdb; overrides the mdb.path setting."
@@ -151,6 +158,46 @@
               "sessionType": "rr",
               "traceDir": "${workspaceFolder}/trace"
             }
+          },
+          {
+            "label": "mdb: Firefox mach wpt",
+            "description": "Debug each Firefox started by ./mach wpt",
+            "body": {
+              "type": "mdb",
+              "request": "launch",
+              "name": "mach wpt",
+              "program": "${workspaceFolder}/mach",
+              "args": [
+                "wpt",
+                "--no-pause-after-test",
+                "testing/web-platform/tests/path/to/test.html"
+              ],
+              "cwd": "${workspaceFolder}",
+              "childDebuggerArgs": [
+                "--debugger={shimPath}",
+                "--debugger-args={shimArgs}"
+              ]
+            }
+          },
+          {
+            "label": "mdb: Firefox mach mochitest",
+            "description": "Debug each Firefox started by ./mach mochitest",
+            "body": {
+              "type": "mdb",
+              "request": "launch",
+              "name": "mach mochitest",
+              "program": "${workspaceFolder}/mach",
+              "args": [
+                "mochitest",
+                "path/to/test"
+              ],
+              "cwd": "${workspaceFolder}",
+              "childDebuggerArgs": [
+                "--debugger={shimPath}",
+                "--debugger-args={shimArgs}",
+                "--debugger-interactive"
+              ]
+            }
           }
         ]
       }
@@ -190,6 +237,16 @@
         "title": "mdb: Reverse Continue"
       }
     ],
+    "views": {
+      "debug": [
+        {
+          "type": "webview",
+          "id": "mdb.processes",
+          "name": "mdb: Processes",
+          "when": "debugType == mdb"
+        }
+      ]
+    },
     "menus": {
       "commandPalette": [
         {
@@ -272,9 +329,10 @@
   },
   "scripts": {
     "vscode:prepublish": "yarn run package",
-    "compile": "webpack",
-    "watch": "webpack --watch",
-    "package": "webpack --mode production --devtool hidden-source-map",
+    "copy-codicons": "node scripts/copy-codicons.js",
+    "compile": "yarn run copy-codicons && webpack",
+    "watch": "yarn run copy-codicons && webpack --watch",
+    "package": "yarn run copy-codicons && webpack --mode production --devtool hidden-source-map",
     "compile-tests": "tsc -p . --outDir out",
     "test:unit": "mocha --ui tdd 'out/test/unit/**/*.test.js'",
     "test:integration": "mocha --ui tdd --timeout 20000 'out/test/integration/**/*.test.js'",
@@ -285,8 +343,9 @@
   },
   "devDependencies": {
     "@types/mocha": "^10.0.10",
-    "@types/node": "^22.20.5",
+    "@types/node": "^26.6.6",
     "@types/vscode": "^1.144.0",
+    "@vscode/codicons": "^0.0.46-24",
     "@vscode/test-cli": "^0.0.12",
     "@vscode/test-electron": "^2.5.2",
     "eslint": "^9.39.3",
