@@ -1,0 +1,66 @@
+/* The mdb Processes panel. VS Code provides the --vscode-* theme variables. */
+* { box-sizing: border-box; }
+body { margin: 0; padding: 0; font-family: var(--vscode-font-family); font-size: var(--vscode-font-size); color: var(--vscode-foreground); }
+.codicon { vertical-align: middle; }
+
+.filter-row { padding: 4px 12px 4px 20px; }
+.filter { width: 100%; padding: 3px 6px; font: inherit; color: var(--vscode-input-foreground); background: var(--vscode-input-background);
+  border: 1px solid var(--vscode-input-border, transparent); border-radius: 2px; outline: none; }
+.filter:focus { border-color: var(--vscode-focusBorder); }
+.filter::placeholder { color: var(--vscode-input-placeholderForeground); }
+
+.row { display: flex; align-items: center; gap: 8px; height: 22px; padding-right: 4px; white-space: nowrap; }
+.row:hover { background: var(--vscode-list-hoverBackground); }
+.row.exited { opacity: .55; }
+.name { font-weight: 600; flex: none; }
+.pid { font-family: var(--vscode-editor-font-family); font-size: 12px; color: var(--vscode-descriptionForeground); flex: none; }
+.args { color: var(--vscode-descriptionForeground); overflow: hidden; text-overflow: ellipsis; min-width: 0; flex: 1; }
+.actions { display: inline-flex; flex: none; }
+
+.icon-button { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; padding: 0;
+  border: none; border-radius: 5px; background: none; color: inherit; cursor: pointer; }
+.icon-button:hover { background: var(--vscode-toolbar-hoverBackground); }
+.icon-button:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: -1px; }
+
+.empty { padding: 8px 20px; color: var(--vscode-descriptionForeground); }
+
+.menu { position: fixed; z-index: 10; min-width: 180px; padding: 4px; border-radius: 5px; font-size: 13px;
+  background: var(--vscode-menu-background); color: var(--vscode-menu-foreground);
+  border: 1px solid var(--vscode-menu-border, var(--vscode-widget-border, transparent)); box-shadow: 0 2px 8px var(--vscode-widget-shadow); }
+.menu-item { display: flex; align-items: center; gap: 8px; padding: 3px 10px 3px 6px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
+.menu-item:hover { background: var(--vscode-menu-selectionBackground); color: var(--vscode-menu-selectionForeground); }
+.menu-separator { height: 1px; margin: 4px 0; background: var(--vscode-menu-separatorBackground, var(--vscode-widget-border)); }
+
+.tab {
+  display: flex;
+  gap: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 0 12px 0 16px;
+  border-bottom: 1px solid var(--vscode-widget-border);
+  flex: none;
+}
+
+/* tab header buttons */
+.tab button {
+  border: none;
+    border-bottom-width: medium;
+    border-bottom-style: none;
+    border-bottom-color: currentcolor;
+  background: none;
+  padding: 6px 8px 5px;
+  cursor: pointer;
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 2px solid transparent;
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  white-space: nowrap;
+  flex: none;
+}
+
+.tab button.active {
+  color: var(--vscode-input-foreground);
+  border-bottom-color: var(--vscode-focusBorder);
+}
